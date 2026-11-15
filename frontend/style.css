@@ -329,3 +329,12 @@ details.more .detail { color: var(--sub); font-size: 13px; line-height: 1.7; mar
   .glance { overflow: visible; }
   .hero .num { font-size: 52px; }
 }
+
+/* 찾는 물건 · 주차 되는 곳 */
+.wish-input { background: var(--card); color: var(--text); border: 0; border-radius: 999px; padding: 9px 14px; font-size: 14px; font-family: inherit; width: 170px; }
+.card.spots { background: var(--panel); }
+.spot-list { display: flex; flex-direction: column; gap: 8px; }
+.spot { display: flex; gap: 12px; align-items: center; background: var(--card); border-radius: 14px; padding: 10px 12px; }
+.spot .e { font-size: 24px; }
+.spot b { font-size: 15px; }
+.spot small { display: block; color: var(--sub); font-size: 12px; margin-top: 2px; }

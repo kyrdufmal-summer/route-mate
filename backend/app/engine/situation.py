@@ -87,6 +87,26 @@ class Context:
     gig_site: Point | None = None
     incidents: list[dict] = field(default_factory=list)
     new_gigs: list[dict] = field(default_factory=list)
+    waiting_spots: list[dict] = field(default_factory=list)   # 주차 되는 카페·마트 등
+    market_hits: list[dict] = field(default_factory=list)     # 찾던 물건 매물
+    trip: dict | None = None                                  # 진행 중인 중고거래 다녀오기
+
+
+def josa(word: str, with_batchim: str, without: str) -> str:
+    """한글 받침 유무에 맞는 조사 (예: 카시트+가, 자전거+가, 에어프라이어+가, 책+이)."""
+    ch = word.strip()[-1] if word.strip() else ""
+    if "가" <= ch <= "힣":
+        return with_batchim if (ord(ch) - 0xAC00) % 28 else without
+    return without
+
+
+def josa_ro(word: str) -> str:
+    """'로/으로': 받침이 없거나 ㄹ 받침이면 '로'."""
+    ch = word.strip()[-1] if word.strip() else ""
+    if "가" <= ch <= "힣":
+        b = (ord(ch) - 0xAC00) % 28
+        return "로" if b in (0, 8) else "으로"
+    return "로"
 
 
 def _iv(id_, priority, kind, say, short=None, actions=None, detail=None):
@@ -181,10 +201,19 @@ def assess(ctx: Context) -> list[dict]:
     if not active:
         for inc in ctx.incidents:
             near_dest = "lat" in inc and dist_to_segment_m(Point(inc["lat"], inc["lng"]), ctx.return_point, ctx.return_point) <= inc.get("radius_m", 200) + 150
-            if inc["type"] == "school_rush" and near_dest:
+            if inc["type"] == "school_rush" and near_dest and ctx.parked:
                 out.append(_iv(f"inc-{inc['id']}", 1, "rush",
-                               f"이 시간엔 학원 앞에 차가 몰려요. 차는 지금 자리에 두고 걸어가서 데려오시는 게 더 빨라요.",
+                               "이 시간엔 학원 앞에 차가 몰려요. 차는 지금 자리에 두고 걸어가서 데려오시는 게 더 빨라요.",
                                "학원 앞이 막혀요. 걸어가시는 게 빨라요."))
+            elif inc["type"] == "school_rush" and near_dest:
+                # 차로 학원 앞에 가는 중: 정차 대기 대신 한 바퀴 돌거나, 주차 되는 곳에서 기다리기
+                spot = ctx.waiting_spots[0] if ctx.waiting_spots else None
+                tail = f" 아니면 {spot['name']}에 차 대고 기다리셔도 돼요. {spot['parking']}예요." if spot else ""
+                out.append(_iv(f"inc-{inc['id']}-drive", 2, "rush",
+                               f"학원 앞에 차가 몰려 있어요. 서서 기다리면 단속될 수 있으니 한 바퀴 돌고 오시는 게 좋겠어요.{tail}",
+                               "학원 앞이 막혀요. 한 바퀴 돌고 오세요.",
+                               [{"label": "한 바퀴 도는 길 안내", "action": "loop_route"}] +
+                               ([{"label": f"{spot['name']}{josa_ro(spot['name'])} 안내", "action": "go_spot", "spot_id": spot["id"]}] if spot else [])))
             if inc["type"] == "accident" and near_dest and not ctx.parked:
                 out.append(_iv(f"inc-{inc['id']}", 2, "safety",
                                f"앞쪽 {inc['title']} 현장이 있어요. 천천히 지나가세요.", "앞에 사고 났어요. 천천히 가세요."))
@@ -208,6 +237,19 @@ def assess(ctx: Context) -> list[dict]:
                            f"근처 {shop}에서 일이 하나 올라왔어요. {g['breakdown']['task']}분짜리고, {g['finish_at']}이면 돌아와요. 보실래요?",
                            "새 일이 하나 올라왔어요.",
                            [{"label": "볼게요", "action": "show_gigs"}, {"label": "괜찮아요", "action": "dismiss"}]))
+
+    # 5-2) 찾던 물건(동네 중고거래): 서 있고, 다녀올 시간이 될 때만. 쉬는 중이어도 알려 준다(일이 아니라 장보기)
+    if not active and ctx.parked and not ctx.trip:
+        for m in ctx.market_hits:
+            won = f"{m['price'] // 10000}만 원" if m["price"] % 10000 == 0 else f"{m['price']:,}원"
+            out.append(_iv(f"market-{m['id']}", 1, "market",
+                           f"찾으시던 {m['keyword']}{josa(m['keyword'], '이', '가')} 근처에 올라왔어요. "
+                           f"{won}이고, {m.get('condition_say') or '상태는 판매글을 확인해 주세요'}. "
+                           f"{m['place']}까지 차로 {m['drive_min']}분이라 {m['finish_at']}이면 돌아와요. 판매자에게 구매 메시지 보내 볼까요?",
+                           f"찾던 {m['keyword']}{josa(m['keyword'], '이', '가')} 근처에 올라왔어요.",
+                           [{"label": "메시지 보내고 길 안내", "action": "market_go", "listing_id": m["id"]},
+                            {"label": "괜찮아요", "action": "dismiss"}],
+                           detail={"listing": m}))
 
     # 6) 약속 시각 알림 (업무가 없을 때)
     if not active:

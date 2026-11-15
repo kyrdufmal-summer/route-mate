@@ -87,6 +87,8 @@ class SessionIn(BaseModel):
     driver: DriverIn = DriverIn()
     consent_location: bool = True
     purpose: Literal["pickup", "hospital", "other"] = "pickup"
+    wishlist: list[str] = []          # 동네 중고거래로 찾고 있는 물건 (예: "유아 카시트")
+    wish_max_price: int | None = None
 
 
 class AcceptIn(BaseModel):
@@ -334,7 +336,10 @@ def vehicle_event(sid: str, body: EventIn):
         rp = fw.return_point
         others = [lot for lot in store.parking_lots if (lot["lat"], lot["lng"]) != (rp.lat, rp.lng)]  # 꽉 찬 곳 제외
         alts = evaluate_lots(others, q, HeuristicEstimator())["recommended"][:2]
-        guidance.append("돌아갈 주차장이 꽉 찼대요. 근처에 바로 세울 수 있는 곳을 찾아 뒀어요.")
+        guidance.append("돌아갈 주차장이 꽉 찼대요. 한 바퀴 돌고 오시면 자리가 날 수 있어요. 아니면 근처에 바로 세울 수 있는 곳을 찾아 뒀어요.")
+        spots = _waiting_spots(fw.return_point, now)
+        if spots:
+            guidance.append(f"{spots[0]['name']}도 괜찮아요. {spots[0]['parking']}예요.")
         return {"paused": True, "reason": s.pause_reason, "guidance": guidance, "alternatives": alts}
     else:
         guidance.append("새 일은 잠깐 멈출게요. 돌아오는 것부터 챙기세요.")
@@ -401,7 +406,9 @@ def situation(sid: str, now: datetime | None = None, gear: str = "P", resting: b
 
     ctx = sit.Context(now=now, return_by=fw.return_by, position=fw.position, return_point=fw.return_point,
                       purpose=s.data.get("purpose", "pickup"), wants_work=fw.wants_work, resting=resting,
-                      parked=VehicleState(gear).parked, assignment=a, gig_site=site, incidents=incs, new_gigs=new_gigs)
+                      parked=VehicleState(gear).parked, assignment=a, gig_site=site, incidents=incs, new_gigs=new_gigs,
+                      waiting_spots=_waiting_spots(fw.return_point, now), market_hits=_market_hits(s, fw, now),
+                      trip=s.data.get("trip"))
     announced = s.data.setdefault("announced", [])
     fresh_ivs = [iv for iv in sit.assess(ctx) if iv["id"] not in announced]
     for iv in fresh_ivs:
@@ -412,7 +419,8 @@ def situation(sid: str, now: datetime | None = None, gear: str = "P", resting: b
 
 
 class InterventionAction(BaseModel):
-    action: Literal["extend", "dismiss", "notify_partner", "cancel_gig", "show_gigs"]
+    action: Literal["extend", "dismiss", "notify_partner", "cancel_gig", "show_gigs", "loop_route", "go_spot"]
+    spot_id: str = ""
     minutes: int = 0
     intervention_id: str = ""
 
@@ -431,6 +439,12 @@ def situation_action(sid: str, body: InterventionAction):
         if s.assignment and s.assignment["state"] in ("accepted", "in_progress"):
             store.transition(sid, "cancelled", reason="late_risk")
         msg = "일은 취소했어요. 천천히, 안전하게 돌아오세요."
+    elif body.action == "loop_route":
+        msg = "주변을 한 바퀴 도는 길로 안내할게요. 5분쯤 걸리고, 돌아오면 학원 앞이 좀 풀려 있을 거예요. (시연에서는 추정 경로예요)"
+    elif body.action == "go_spot":
+        spot = next((x for x in _waiting_spots(_fw(s, datetime.fromisoformat(s.data["now"])).return_point,
+                                                datetime.fromisoformat(s.data["now"])) if x["id"] == body.spot_id), None)
+        msg = f"{spot['name']}{sit.josa_ro(spot['name'])} 안내할게요. {spot['parking']}예요." if spot else "그곳 정보를 찾지 못했어요."
     elif body.action == "dismiss":
         msg = "네, 알겠어요."
     store.log(sid, "intervention_action", action=body.action, id=body.intervention_id)
@@ -467,6 +481,117 @@ def add_incident(body: IncidentIn, sid: str | None = None):
         inc.update(title="끝나는 시간 변경", extend_min=body.minutes, source="학원·병원 알림(연동 가정)")
     store.manual_incidents.append(inc)
     return inc
+
+
+# ---------- 주차 되는 곳 · 동네 중고거래 ----------
+def _waiting_spots(near: Point, now: datetime, max_walk: int = 8) -> list[dict]:
+    """주차가 되는 카페·마트 등: 학원 앞에서 서서 기다리는 대신 차를 대고 기다릴 수 있는 곳."""
+    est = HeuristicEstimator()
+    out = []
+    for p in store.places:
+        if not p.get("parking"):
+            continue
+        _, walk = est.walk(Point(p["lat"], p["lng"]), near)
+        if walk > max_walk or not (at_clock(now, p["open"]) <= now < at_clock(now, p["close"])):
+            continue
+        out.append({"id": p["id"], "name": p["name"].replace("샘플 ", "").split(" (")[0], "parking": p["parking"],
+                    "walk_min": walk, "lat": p["lat"], "lng": p["lng"], "source": p["source"]})
+    out.sort(key=lambda x: x["walk_min"])
+    return out
+
+
+@app.get("/api/waiting-spots")
+def waiting_spots(lat: float, lng: float, now: datetime | None = None):
+    return {"spots": _waiting_spots(Point(lat, lng), _now(now)), "loop_min": 5}
+
+
+def _listing_trip(listing: dict, fw: FlexWindow, now: datetime) -> dict:
+    est = HeuristicEstimator()
+    site = Point(listing["lat"], listing["lng"])
+    km1, go = est.drive(fw.position, site)
+    km2, back = est.drive(site, fw.return_point)
+    delay = sit.route_delay(_incidents(now), [(fw.position, site), (site, fw.return_point)])[0]
+    total = go + listing["handover_min"] + back + delay
+    return {"drive_min": go, "back_min": back, "delay_min": delay, "total_min": total,
+            "arrive_at": fmt(now + timedelta(minutes=go)), "finish_at": fmt(now + timedelta(minutes=total))}
+
+
+def _market_hits(s, fw: FlexWindow, now: datetime) -> list[dict]:
+    """찾던 물건 중, 올라와 있고 · 가격이 맞고 · 돌아올 시각 전에 다녀올 수 있는 매물."""
+    wish = [w.strip() for w in s.data.get("wishlist", []) if w.strip()]
+    if not wish:
+        return []
+    cap = s.data.get("wish_max_price")
+    out = []
+    for item in store.listings:
+        if datetime.fromisoformat(item["posted_at"]) > now or item["id"] in s.data.get("market_done", []):
+            continue
+        kw = next((w for w in wish if any(w.replace(" ", "") in k.replace(" ", "") or k.replace(" ", "") in w.replace(" ", "")
+                                          for k in item["keywords"] + [item["title"]])), None)
+        if not kw or (cap and item["price"] > cap):
+            continue
+        trip = _listing_trip(item, fw, now)
+        if now + timedelta(minutes=trip["total_min"] + max(5, fw.min_buffer_min)) > fw.return_by:
+            continue  # 다녀오면 약속에 늦는 매물은 알리지 않는다
+        out.append({**item, **trip, "keyword": kw})
+    return out
+
+
+class MarketGoIn(BaseModel):
+    now: datetime | None = None
+    vehicle_state: VehicleStateIn = VehicleStateIn()
+
+
+@app.post("/api/sessions/{sid}/market/{listing_id}/go")
+def market_go(sid: str, listing_id: str, body: MarketGoIn):
+    """구매 메시지를 보내고(시연: 실제 발송 없음) 거래 장소 → 복귀 지점 길 안내를 시작한다."""
+    s = _session_or_404(sid)
+    try:
+        require_parked(body.vehicle_state.v(), "길 안내를 시작할")
+    except DrivingLockError as e:
+        raise HTTPException(423, str(e))
+    item = next((x for x in store.listings if x["id"] == listing_id), None)
+    if not item:
+        raise HTTPException(404, "매물을 찾을 수 없어요.")
+    now = _now(body.now)
+    fw = _fw(s, now)
+    trip = _listing_trip(item, fw, now)
+    if now + timedelta(minutes=trip["total_min"]) > fw.return_by:
+        raise HTTPException(409, "지금 다녀오면 돌아올 시각에 늦어요.")
+    message = f"안녕하세요, '{item['title']}' 사고 싶어요. 지금 {item['place']}{sit.josa_ro(item['place'])} 가면 {trip['arrive_at']}쯤 도착해요. 괜찮으실까요?"
+    s.data["trip"] = {"kind": "market", "listing_id": item["id"], "title": item["title"], "price": item["price"],
+                      "place": item["place"], "lat": item["lat"], "lng": item["lng"], "handover_min": item["handover_min"],
+                      "message": message, "state": "going", **trip,
+                      "waypoints": [{"label": item["place"], "lat": item["lat"], "lng": item["lng"], "eta": trip["arrive_at"]},
+                                    {"label": "복귀 지점", **(s.data["return_point"] or s.data["position"]), "eta": trip["finish_at"]}]}
+    s.data.setdefault("market_done", []).append(item["id"])
+    store.log(sid, "market_message_sent", listing=item["id"])
+    return {"trip": s.data["trip"], "say": f"판매자에게 메시지 보냈어요. {item['place']}까지 {trip['drive_min']}분이에요. "
+                                             f"{trip['arrive_at']}쯤 도착하고, 물건 받고 {trip['finish_at']}이면 여기로 돌아와요."}
+
+
+@app.post("/api/sessions/{sid}/trip/{action}")
+def trip_action(sid: str, action: Literal["arrived", "done", "cancel"]):
+    s = _session_or_404(sid)
+    trip = s.data.get("trip")
+    if not trip:
+        raise HTTPException(409, "다녀오는 중인 곳이 없어요.")
+    if action == "arrived":
+        trip["state"] = "handover"
+    else:
+        s.data["trip"] = None
+    store.log(sid, f"trip_{action}")
+    return {"trip": s.data.get("trip")}
+
+
+@app.post("/api/demo/listing/{listing_id}")
+def post_listing_now(listing_id: str, now: datetime | None = None):
+    """시연 도구: 이 매물을 지금 올라온 것으로 만든다."""
+    item = next((x for x in store.listings if x["id"] == listing_id), None)
+    if not item:
+        raise HTTPException(404, "매물을 찾을 수 없어요.")
+    item["posted_at"] = _now(now).isoformat()
+    return item
 
 
 @app.delete("/api/demo/incidents", status_code=204)

@@ -62,6 +62,7 @@ class Store:
         self.live_feed = load("live_feed.json", "incidents")
         self.manual_incidents: list[dict] = []   # 시연 도구에서 만든 상황
         self.enforcement = load("enforcement.json", "zones")
+        self.listings = load("market_listings.json", "listings")
 
     # --- audit ---
     def log(self, session_id: str | None, event: str, **detail: Any) -> None:

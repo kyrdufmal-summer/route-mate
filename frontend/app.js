@@ -7,11 +7,13 @@ const S = {
   stage: "park", now: null, scenario: null,
   lots: [], lotsExcluded: [], lot: null, showLotsExcluded: false,
   filters: { pickupOnly: true, receipt: false },
-  plan: { returnBy: "17:55", wantsWork: true, keywords: [], buffer: 5, maxDrive: "", consent: true, heard: "", purpose: "pickup" },
+  plan: { returnBy: "17:55", wantsWork: true, keywords: [], buffer: 5, maxDrive: "", consent: true, heard: "", purpose: "pickup", wishlist: [] },
   session: null, recs: null, driveBrief: null, gear: "P",
   lastAccept: null, resting: false, showGigsExcluded: false, guidance: [], alternatives: [],
+  trip: null, spots: [], showSpots: false,
   lastSpoken: "", alerts: [], live: [], enf: null, enfBase: 0, enfAt: 0, auto: null, left: "glance",
 };
+const WISH_SUGGEST = ["유아 카시트", "아이 자전거", "에어프라이어"];
 const PURPOSE = { pickup: ["아이 픽업", "🏫", "학원"], hospital: ["진료", "🏥", "병원"], other: ["약속", "📍", "목적지"] };
 
 // ---------- 아이콘 ----------
@@ -203,6 +205,14 @@ function renderPark() {
           정보 출처: ${esc(l.source)} · ${l.updated_at.slice(5, 16).replace("T", " ")} 갱신 (${l.data_freshness})
         </div></details>
       </div>`).join("") || `<div class="card">조건에 맞는 주차장이 없어요. 필터를 바꿔 보세요.</div>`}
+    <div class="card spots">
+      <div class="title">주차장이 꽉 찼다면</div>
+      <div class="facts">학원 앞에 서서 기다리면 단속될 수 있어요. 이렇게 해 보세요.</div>
+      <div class="spot-list">
+        <div class="spot"><span class="e">🔄</span><div><b>한 바퀴 돌고 오기</b><small>약 5분 · 그사이 자리가 나는 경우가 많아요</small></div></div>
+        ${S.spots.map((sp) => `<div class="spot"><span class="e">${/카페/.test(sp.name) ? "☕" : /마트/.test(sp.name) ? "🛒" : "🏪"}</span><div><b>${esc(sp.name)}에서 기다리기</b><small>${esc(sp.parking)} · 학원까지 걸어서 ${sp.walk_min}분</small></div></div>`).join("")}
+      </div>
+    </div>
     ${S.lotsExcluded.length ? `<button class="link-more" data-toggle="lotsExcluded">${S.showLotsExcluded ? "접기" : `추천하지 않은 ${S.lotsExcluded.length}곳과 이유 보기`}</button>` : ""}
     ${S.showLotsExcluded ? `<div class="excluded-list">${S.lotsExcluded.map((x) => `<div class="card"><div class="title">${esc(clean(x.name))}</div><div class="why">${x.reasons.map(esc).join(" · ")}</div></div>`).join("")}</div>` : ""}
   `;
@@ -230,6 +240,9 @@ function renderTime() {
       <button class="${!p.wantsWork ? "on restful" : ""}" data-work="0">쉬면서 기다릴게요<small>주차·쉼터·생활정보만 안내</small></button>
       <button class="${p.wantsWork ? "on" : ""}" data-work="1">가까운 일도 볼래요<small>돌아올 시각 안에 끝나는 일만</small></button>
     </div>
+    <h4>동네 중고거래로 찾고 있는 물건 <small style="color:var(--faint);font-weight:400">근처에 올라오면 알려 드려요</small></h4>
+    <div class="chips">${[...new Set([...WISH_SUGGEST, ...p.wishlist])].map((w) => `<button class="chip-toggle ${p.wishlist.includes(w) ? "on" : ""}" data-wish="${esc(w)}">🛍 ${esc(w)}</button>`).join("")}
+      <input id="wishInput" class="wish-input" placeholder="직접 입력 후 Enter"></div>
     <h4>근처에서 찾아볼 곳</h4>
     <div class="chips">${KEYWORDS.map((k) => `<button class="chip-toggle ${p.keywords.includes(k) ? "on" : ""}" data-kw="${k}">${k}</button>`).join("")}</div>
     <details class="adv"><summary>세부 설정</summary>
@@ -274,7 +287,7 @@ async function startPlan() {
         position: { lat: S.lot.lat, lng: S.lot.lng }, return_point: null,
         return_by: `${S.now.slice(0, 10)}T${p.returnBy}:00`, now: S.now,
         min_buffer_min: p.buffer, max_drive_min: p.maxDrive === "" ? null : Number(p.maxDrive),
-        wants_work: p.wantsWork, radar_keywords: p.keywords, driver: S.scenario.driver, consent_location: p.consent, purpose: p.purpose,
+        wants_work: p.wantsWork, radar_keywords: p.keywords, driver: S.scenario.driver, consent_location: p.consent, purpose: p.purpose, wishlist: p.wishlist,
       }),
     });
     S.session = r.session_id; S.resting = !p.wantsWork;
@@ -401,10 +414,37 @@ async function decline(gigId) {
 }
 
 // ---------- 4. 진행 ----------
+function renderTrip(notes) {
+  const tr = S.trip;
+  const step = tr.state === "going" ? 0 : 1;
+  const items = [[`${tr.place}까지 이동`, tr.arrive_at], [`물건 받기 (${tr.handover_min}분)`, ""], ["복귀 지점 도착", tr.finish_at], ["약속 시각", S.plan.returnBy]];
+  return `
+    <span class="badge gray">동네 중고거래 · 샘플</span>
+    <h2>${esc(tr.title)} 받으러 가는 중</h2>
+    <p class="lead">${won(tr.price)} · 차로 ${tr.drive_min}분${tr.delay_min ? ` (길 상황 +${tr.delay_min}분 포함)` : ""}</p>
+    <div class="card"><div class="k" style="font-size:12px;color:var(--sub)">판매자에게 보낸 메시지 (시연: 실제로 보내지 않음)</div><p style="margin:6px 0 0">${esc(tr.message)}</p></div>
+    <ol class="steps-v">${items.map(([t, w], i) => `<li class="${i < step ? "done" : i === step ? "now" : ""}"><span>${esc(t)}</span><span class="when">${w}</span></li>`).join("")}</ol>
+    ${notes}
+    <div class="row">
+      ${tr.state === "going" ? `<button class="btn primary big" data-trip="arrived">도착했어요</button>` : `<button class="btn primary big" data-trip="done">받았어요, 돌아갈게요</button>`}
+      <button class="btn ghost" data-trip="cancel">안 갈래요</button>
+    </div>`;
+}
+
+async function tripAction(action) {
+  try {
+    const r = await api(`/api/sessions/${S.session}/trip/${action}`, { method: "POST" });
+    S.trip = r.trip;
+    say({ arrived: "도착하셨네요. 물건 상태 한번 보고 받으세요.", done: "좋은 거래였길 바라요. 이제 여기로 돌아오시면 돼요.", cancel: "네, 안 가셔도 돼요." }[action]);
+    if (!S.trip) go("pick"); else render();
+  } catch (e) { say(e.message); }
+}
+
 function renderGo() {
   const a = S.recs?.assignment;
   const notes = S.guidance.map((g) => `<div class="notice">${esc(g)}</div>`).join("")
     + S.alternatives.map((l) => `<div class="card"><div class="head"><div class="title">${esc(clean(l.name))}</div><div class="price">${won(l.fee_estimate)}<small>예상 요금</small></div></div><div class="facts"><span>${I.walk} 목적지까지 걸어서 <b>${l.walk_to_destination_min}분</b></span></div></div>`).join("");
+  if ((!a || !["accepted", "in_progress"].includes(a.state)) && S.trip) return renderTrip(notes);
   if (!a) return `<h2>진행 중인 업무가 없어요</h2>${notes}<button class="btn primary" data-goto="pick">선택 화면으로</button>`;
   const ev = a.evaluation, nav = S.lastAccept?.navigation;
   if (a.state === "completed") return `
@@ -480,7 +520,9 @@ document.addEventListener("click", async (e) => {
   if (d.purpose) { S.plan.purpose = d.purpose; render(); return; }
   if (d.left) { S.left = d.left; $$(".left-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.left === d.left));
     $("#glance").classList.toggle("hidden", d.left !== "glance"); $("#mapBox").classList.toggle("hidden", d.left !== "map"); render(); return; }
-  if (d.alertAct) return alertAction(Number(d.alertIdx), d.alertAct, Number(d.minutes || 0));
+  if (d.alertAct) return alertAction(Number(d.alertIdx), d.alertAct, Number(d.minutes || 0), d);
+  if (d.wish) { const w = S.plan.wishlist; S.plan.wishlist = w.includes(d.wish) ? w.filter((x) => x !== d.wish) : [...w, d.wish]; render(); return; }
+  if (d.trip) return tripAction(d.trip);
   if (d.accept) return accept(d.accept);
   if (d.decline) return decline(d.decline);
   if (d.act) return act(d.act);
@@ -545,8 +587,8 @@ async function restart() {
   try { await api("/api/demo/incidents", { method: "DELETE" }); } catch (_) {}
   Object.assign(S, { stage: "park", lot: null, session: null, recs: null, driveBrief: null, lastAccept: null, resting: false,
     guidance: [], alternatives: [], showLotsExcluded: false, showGigsExcluded: false, now: S.scenario.now,
-    plan: { returnBy: "17:55", wantsWork: true, keywords: [], buffer: 5, maxDrive: "", consent: true, heard: "", purpose: "pickup" },
-    alerts: [], live: [] });
+    plan: { returnBy: "17:55", wantsWork: true, keywords: [], buffer: 5, maxDrive: "", consent: true, heard: "", purpose: "pickup", wishlist: [] },
+    alerts: [], live: [], trip: null });
   stopAuto();
   await loadParking(); render();
 }
@@ -626,6 +668,7 @@ function renderGlance() {
     label = `${pLabel} ${S.plan.returnBy}까지`;
     num = minutesUntil(S.plan.returnBy);
     if (active) next = a.state === "accepted" ? `${shopOf(a.evaluation.partner)}에 가는 중` : `${shopOf(a.evaluation.partner)}에서 일하는 중`;
+    else if (S.trip) next = `${S.trip.title} 받으러 가는 중`;
     else next = S.resting ? "쉬는 중이에요" : `시간 맞는 일 ${S.recs?.recommended?.length || 0}개`;
     if (num <= 10) cls = "warn";
     if (active) {
@@ -651,6 +694,14 @@ function renderGlance() {
       ${link(`${onFoot ? "걸어서" : "차로"} ${go}분`, { walk: onFoot, bad: a.state === "accepted" ? bad : "" })}
       ${node("📦", shopOf(a.evaluation.partner), `일 ${bd.task}분`, a.state === "in_progress")}
       ${link(`${onFoot ? "걸어서" : "차로"} ${back}분`, { walk: onFoot, bad })}
+      ${node(pIcon, pPlace, S.plan.returnBy)}
+    </div></div>`;
+  } else if (S.trip) {
+    strip = `<div class="strip"><h5>지금 동선</h5><div class="nodes">
+      ${node("🅿️", "내 차", "출발", S.trip.state === "going")}
+      ${link(`차로 ${S.trip.drive_min}분`)}
+      ${node("🛍️", S.trip.place.replace("샘플", ""), `물건 받기 ${S.trip.handover_min}분`, S.trip.state === "handover")}
+      ${link(`차로 ${S.trip.back_min}분`)}
       ${node(pIcon, pPlace, S.plan.returnBy)}
     </div></div>`;
   } else if (S.lot) {
@@ -712,12 +763,12 @@ function tickCounter() {
 
 // ---------- 먼저 말 걸기 ----------
 const ALERT_KIND = { late: "늦을 수 있어요", tight: "시간이 빠듯해요", info: "길 상황", leave: "출발 알림", weather: "날씨", rush: "학원 앞 상황",
-  safety: "안전", schedule: "일정 변경", new_gig: "새 일", remind: "시간 알림" };
+  safety: "안전", schedule: "일정 변경", new_gig: "새 일", remind: "시간 알림", market: "🛍 찾던 물건" };
 
 function renderAlerts() {
   return S.alerts.slice(0, 2).map((x, i) => `
     <div class="alert p${x.priority}"><div class="k">${ALERT_KIND[x.kind] || "알림"}</div><p>${esc(S.gear === "D" ? x.say_short : x.say)}</p>
-      <div class="row">${x.actions.map((ac) => `<button class="btn ${ac.action === "dismiss" ? "ghost" : "primary"}" data-alert-act="${ac.action}" data-alert-idx="${i}" data-minutes="${ac.minutes || 0}">${esc(ac.label)}</button>`).join("")}
+      <div class="row">${x.actions.map((ac) => `<button class="btn ${ac.action === "dismiss" ? "ghost" : "primary"}" data-alert-act="${ac.action}" data-alert-idx="${i}" data-minutes="${ac.minutes || 0}" data-listing="${ac.listing_id || ""}" data-spot="${ac.spot_id || ""}">${esc(ac.label)}</button>`).join("")}
       ${x.actions.length ? "" : `<button class="btn ghost" data-alert-act="close" data-alert-idx="${i}">확인</button>`}</div>
     </div>`).join("");
 }
@@ -739,13 +790,21 @@ async function pollSituation() {
   render();
 }
 
-async function alertAction(idx, action, minutes) {
+async function alertAction(idx, action, minutes, data = {}) {
   const x = S.alerts[idx];
   S.alerts.splice(idx, 1);
   if (action === "close") return render();
+  if (action === "market_go") {
+    try {
+      const r = await api(`/api/sessions/${S.session}/market/${data.listing}/go`, { method: "POST",
+        body: JSON.stringify({ now: S.now, vehicle_state: { gear: S.gear, speed_kmh: S.gear === "D" ? 30 : 0 } }) });
+      S.trip = r.trip; go("go"); say(r.say);
+    } catch (e) { say(e.message); }
+    return;
+  }
   if (action === "show_gigs") { await loadRecs(); go("pick"); return say("새로 올라온 일 보여 드릴게요."); }
   try {
-    const r = await api(`/api/sessions/${S.session}/situation/action`, { method: "POST", body: JSON.stringify({ action, minutes, intervention_id: x?.id || "" }) });
+    const r = await api(`/api/sessions/${S.session}/situation/action`, { method: "POST", body: JSON.stringify({ action, minutes, intervention_id: x?.id || "", spot_id: data.spot || "" }) });
     if (action === "extend") S.plan.returnBy = r.return_by;
     await loadRecs();
     if (action === "cancel_gig") go("go"); else render();
@@ -791,6 +850,7 @@ async function init() {
   setupDemoTools();
   await loadParking();
   await loadEnforcement();
+  try { const d = S.scenario.destination; S.spots = (await api(`/api/waiting-spots?lat=${d.lat}&lng=${d.lng}&now=${encodeURIComponent(S.now)}`)).spots; } catch (_) {}
   render();
   setInterval(tickCounter, 250);
   const z = S.enf?.zones?.[0];
@@ -800,3 +860,18 @@ async function init() {
   S.lastSpoken = $("#bubbleText").textContent;
 }
 init();
+
+// 찾는 물건 직접 입력
+document.addEventListener("keydown", (e) => {
+  if (e.target.id !== "wishInput" || e.key !== "Enter") return;
+  const w = e.target.value.trim();
+  if (w && !S.plan.wishlist.includes(w)) S.plan.wishlist.push(w);
+  render();
+});
+// 시연 도구: 찾던 물건 매물 지금 올리기
+document.addEventListener("click", async (e) => {
+  if (e.target.id !== "postListing") return;
+  await api(`/api/demo/listing/L-1?now=${encodeURIComponent(S.now)}`, { method: "POST" });
+  if (!S.session) return say("매물을 올렸어요. 찾는 물건에 '유아 카시트'를 넣고 계획을 시작해 보세요.");
+  await pollSituation();
+});

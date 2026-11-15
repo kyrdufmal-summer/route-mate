@@ -125,3 +125,53 @@ class EnforcementTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarketAndSpotsTest(unittest.TestCase):
+    def setUp(self):
+        m.store = Store()
+
+    def test_josa(self):
+        self.assertEqual(sit.josa("카시트", "이", "가"), "가")
+        self.assertEqual(sit.josa("책", "이", "가"), "이")
+        self.assertEqual(sit.josa_ro("동네마트"), "로")
+        self.assertEqual(sit.josa_ro("학원 정문"), "으로")
+        self.assertEqual(sit.josa_ro("서울"), "로")
+
+    def test_wishlist_item_announced_when_posted_and_fits(self):
+        sid = session(wishlist=["유아 카시트"], wants_work=False)
+        said = [(t, iv) for t, iv in spoken_between(sid, "17:21", "17:35") if iv["kind"] == "market"]
+        self.assertEqual(said[0][0], "17:30")                   # 매물이 올라온 그 순간
+        say = said[0][1]["say"]
+        self.assertIn("유아 카시트가 근처에 올라왔어요", say)
+        self.assertIn("4만 원", say)
+        self.assertIn("구매 메시지", say)
+        self.assertEqual(said[0][1]["actions"][0]["action"], "market_go")
+
+    def test_far_or_late_listing_not_announced(self):
+        sid = session(wishlist=["아이 자전거"])
+        self.assertFalse([iv for _, iv in spoken_between(sid, "17:21", "17:35") if iv["kind"] == "market"])
+
+    def test_market_go_sends_message_and_navigates(self):
+        sid = session(wishlist=["유아 카시트"])
+        r = m.market_go(sid, "L-1", m.MarketGoIn(now=T("17:31")))
+        self.assertIn("메시지 보냈어요", r["say"])
+        self.assertEqual(len(r["trip"]["waypoints"]), 2)
+        self.assertIn("샘플아파트 정문으로 가면", r["trip"]["message"])
+        with self.assertRaises(m.HTTPException) as cm:   # 주행 중에는 시작하지 않는다
+            m.market_go(sid, "L-1", m.MarketGoIn(now=T("17:31"), vehicle_state={"gear": "D"}))
+        self.assertEqual(cm.exception.status_code, 423)
+        self.assertEqual(m.trip_action(sid, "done")["trip"], None)
+
+    def test_rush_while_driving_suggests_loop_and_parking_spot(self):
+        sid = session()
+        ivs = m.situation(sid, now=T("17:48"), gear="D")["interventions"]
+        rush = next(iv for iv in ivs if iv["kind"] == "rush")
+        self.assertIn("한 바퀴", rush["say"])
+        self.assertIn("무료 주차", rush["say"])
+        self.assertEqual([a["action"] for a in rush["actions"]], ["loop_route", "go_spot"])
+
+    def test_waiting_spots_only_with_parking(self):
+        spots = m.waiting_spots(lat=37.49985, lng=127.0633, now=T("17:20"))["spots"]
+        self.assertTrue(spots)
+        self.assertTrue(all(s["parking"] for s in spots))

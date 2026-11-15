@@ -29,6 +29,8 @@
 | 위치 정보 동의 필수, 동의 철회 시 기록 삭제, 이용 기록의 위치는 약 100m 단위로만 저장 | `store.py` | ✅ |
 | **실시간 상황 판단 · 먼저 말 걸기** — 사고·정체·비·학원 하원 정체·학원/병원 일정 변경·새 일감을 지켜보다가, 내 동선이나 약속 시각에 영향이 있을 때만 먼저 말을 겁니다. 늦을 위험이 있으면 "업체에 늦는다고 알리기 / 일 취소하고 돌아가기"를 함께 제시 | `engine/situation.py`, `GET /api/sessions/{id}/situation` | ✅ (시연용 상황 시간표) |
 | 실시간 교통 상황을 일감 추천·복귀 시각 계산에 반영 (사고가 나면 그 길을 지나는 일은 자동으로 빠짐) | `engine/flex_window.py` | ✅ |
+| **주차가 안 될 때 대안** — 학원 앞이 막히거나 주차장이 꽉 차면 "한 바퀴 돌고 오시는 게 좋겠어요"와 함께 주차 되는 카페·마트(예: 음료 사면 1시간 무료)를 제안 | `GET /api/waiting-spots`, `engine/situation.py` | ✅ |
+| **찾던 물건 알림 (동네 중고거래 연동 가정)** — 평소 찾는 물건(예: 유아 카시트)을 등록해 두면, 근처에 올라오고 돌아올 시각 전에 다녀올 수 있을 때만 "찾으시던 유아 카시트가 근처에 올라왔어요. 4만 원이고, 거의 새것이래요…"라고 읽어 주고, 수락하면 판매자에게 구매 메시지를 보내고(시연: 실제 발송 없음) 그 동네로 길 안내 | `POST /api/sessions/{id}/market/{매물}/go` | ✅ (가상 매물) |
 | **불법 주정차 손해 안내** — 목적지 앞이 단속 구간이면 과태료와 주차장 요금을 나란히 보여 주고, 오늘 이 구역 예상 단속액을 실시간 카운터로 표시해 합법 주차를 권함 | `GET /api/enforcement` | ✅ (시연용 추정치) |
 
 ### 아직 구현하지 않은 것
@@ -101,7 +103,7 @@ python -m uvicorn app.main:app --app-dir backend --port 8765
 
 ### 테스트
 
-외부 패키지 없이 표준 라이브러리 `unittest`로 실행합니다. (45개)
+외부 패키지 없이 표준 라이브러리 `unittest`로 실행합니다. (51개)
 
 ```bash
 python -m unittest discover -s backend/tests -v
@@ -147,6 +149,9 @@ frontend/                차량 중앙 화면 웹 시뮬레이터 (HTML/CSS/JS, 
 | POST | `/api/sessions/{id}/situation/action` | 알림에 대한 선택 (복귀 시각 미루기, 업체에 알리기, 일 취소 등) |
 | GET | `/api/enforcement` | 단속 구간·과태료·오늘 예상 단속액 (시연용 추정) |
 | POST | `/api/demo/incidents` | 시연 도구: 사고·비·정체·일정 변경 만들기 |
+| GET | `/api/waiting-spots` | 주차 되는 카페·마트 등 기다릴 곳 |
+| POST | `/api/sessions/{id}/market/{매물}/go` | 찾던 물건: 구매 메시지 보내기(시연) + 거래 장소 길 안내 |
+| POST | `/api/sessions/{id}/trip/{arrived\|done\|cancel}` | 거래 장소 도착·완료·취소 |
 
 ## 안전·품질 원칙
 
