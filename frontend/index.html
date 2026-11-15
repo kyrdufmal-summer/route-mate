@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROUTE MATE — 차량 화면 시뮬레이터</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="sim-banner">차량 중앙 디스플레이 시뮬레이터 · 모든 주차장·일감·상점은 <b>가상 샘플 데이터</b>입니다 · Pleos Connect(AAOS) 클라이언트 화면 흐름 검증용</div>
+
+<div class="display">
+  <header class="statusbar">
+    <div class="brand">ROUTE MATE <span>FLEX WINDOW</span></div>
+    <div class="clock"><span id="clock">--:--</span><button class="ghost sm" id="tick" title="시뮬레이션 시각 +5분">+5분</button></div>
+    <div class="vehicle">
+      <span id="vstate" class="pill parked">P · 정차</span>
+      <button class="ghost sm" id="toggleDrive">주행 전환</button>
+    </div>
+  </header>
+
+  <main class="body">
+    <section class="map-pane">
+      <svg id="map" viewBox="0 0 520 520" aria-label="주변 지도 (도식)"></svg>
+      <ul class="legend">
+        <li><i class="dot car"></i>내 차량</li>
+        <li><i class="dot dest"></i>목적지</li>
+        <li><i class="dot lot"></i>주차장</li>
+        <li><i class="dot gig"></i>일감</li>
+        <li><i class="dot place"></i>생활정보</li>
+      </ul>
+    </section>
+
+    <section class="flow-pane">
+      <nav class="steps" id="steps">
+        <button data-step="1" class="active">1 주차</button>
+        <button data-step="2">2 FLEX WINDOW</button>
+        <button data-step="3">3 추천</button>
+        <button data-step="4">4 진행</button>
+      </nav>
+
+      <div class="panel" id="panel1">
+        <h2>PARKING TRUTH · SAFE PICKUP</h2>
+        <p class="sub">17:20 도착 · 18:00 종료 후 18:10 까지 체류 기준 예상 요금</p>
+        <label class="check"><input type="checkbox" id="pickupOnly" checked> 합법 승하차 가능 장소만</label>
+        <label class="check"><input type="checkbox" id="receipt"> 건물 내 학원 영수증 있음</label>
+        <div id="lots" class="cards"></div>
+        <details class="excluded"><summary>제외된 주차장</summary><div id="lotsExcluded"></div></details>
+      </div>
+
+      <div class="panel hidden" id="panel2">
+        <h2>FLEX WINDOW 설정</h2>
+        <p class="sub">말한 내용은 해석 제안일 뿐, 아래에서 확인한 값만 저장됩니다.</p>
+        <div class="voice">
+          <input id="utter" placeholder="예) 17:55까지 이곳에 돌아와야 해요. 시간이 남으면 가까운 일도 볼래요">
+          <button id="parse">🎙 해석</button>
+        </div>
+        <div class="form">
+          <label>복귀 시각 <input type="time" id="returnBy" value="17:55"></label>
+          <label>최소 복귀 여유(분) <input type="number" id="buffer" value="5" min="0" max="60"></label>
+          <label>최대 우회 운전(분) <input type="number" id="maxDrive" placeholder="제한 없음" min="0"></label>
+          <label class="check"><input type="checkbox" id="wantsWork" checked> 시간이 남으면 가까운 일도 보기</label>
+          <fieldset><legend>ROUTE RADAR 키워드</legend>
+            <label class="check"><input type="checkbox" name="kw" value="아이동반식당"> 아이동반식당</label>
+            <label class="check"><input type="checkbox" name="kw" value="반찬가게"> 반찬가게</label>
+            <label class="check"><input type="checkbox" name="kw" value="약국"> 약국</label>
+            <label class="check"><input type="checkbox" name="kw" value="주차편한상점"> 주차편한상점</label>
+            <label class="check"><input type="checkbox" name="kw" value="카페"> 카페</label>
+          </fieldset>
+          <label class="check"><input type="checkbox" id="consent" checked> 위치 정보 이용 동의 (세션 종료 시 삭제)</label>
+        </div>
+        <button class="primary" id="startWindow">FLEX WINDOW 켜기</button>
+      </div>
+
+      <div class="panel hidden" id="panel3">
+        <h2>지금 고를 수 있는 것</h2>
+        <p class="sub" id="recMsg"></p>
+        <div class="choice-rest">☕ <b>잠시 쉬기</b> — 일감을 고르지 않아도 됩니다. 복귀 시각 알림만 유지해요.</div>
+        <div id="gigs" class="cards"></div>
+        <details class="excluded"><summary>추천하지 않은 일감과 이유</summary><div id="gigsExcluded"></div></details>
+        <h3>ROUTE RADAR</h3>
+        <div id="radar" class="cards small"></div>
+        <div id="radarAds"></div>
+      </div>
+
+      <div class="panel hidden" id="panel4">
+        <h2>진행 중</h2>
+        <div id="assignment"></div>
+        <div class="row">
+          <button id="startTask">업무 시작</button>
+          <button id="completeTask" class="primary">완료</button>
+          <button id="cancelTask" class="danger">취소하고 복귀</button>
+        </div>
+        <h3>상황 변화 시뮬레이션</h3>
+        <div class="row">
+          <button class="ghost" data-event="traffic_delay">교통 악화 +10분</button>
+          <button class="ghost" data-event="gig_cancelled">업무 취소 수신</button>
+          <button class="ghost" data-event="parking_full">복귀 주차장 만차</button>
+          <button class="ghost" id="resume">추천 재개</button>
+        </div>
+        <div id="guidance"></div>
+        <button class="ghost danger-text" id="deleteSession">세션 데이터 삭제 (동의 철회)</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="voicebar" id="voicebar">🔊 <span id="voiceText">안녕하세요. 주차할 곳부터 찾아볼게요.</span></footer>
+</div>
+
+<details class="audit"><summary>감사 로그 (개발자용)</summary><pre id="audit"></pre></details>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

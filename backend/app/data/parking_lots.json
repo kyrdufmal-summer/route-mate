@@ -1,0 +1,82 @@
+{
+  "_notice": "가상 시연용 샘플 데이터입니다. 실제 주차장·요금이 아닙니다. 실서비스에서는 공공 주차시설 데이터와 제휴 운영사 API로 대체합니다.",
+  "lots": [
+    {
+      "id": "P-A",
+      "name": "샘플 공영주차장 A",
+      "operator_type": "public",
+      "lat": 37.49930,
+      "lng": 127.06280,
+      "entrance": "학원가 이면도로 쪽 진입 (우회전 진입)",
+      "open": "07:00",
+      "close": "23:00",
+      "height_limit_m": 2.1,
+      "fee": { "free_min": 0, "base_min": 5, "base_fee": 300, "unit_min": 5, "unit_fee": 300, "daily_max": 20000 },
+      "discounts": [
+        { "name": "경차 50% 할인", "rate": 0.5, "condition": "vehicle_compact", "verified": true }
+      ],
+      "realtime_spaces": null,
+      "valet": null,
+      "pickup_zone_legal": true,
+      "source": "공공 주차시설 데이터(샘플 값)",
+      "updated_at": "2026-11-15T09:00:00"
+    },
+    {
+      "id": "P-B",
+      "name": "샘플 민영주차장 B (빌딩 지하)",
+      "operator_type": "private",
+      "lat": 37.49975,
+      "lng": 127.06350,
+      "entrance": "빌딩 후면 램프",
+      "open": "06:00",
+      "close": "24:00",
+      "height_limit_m": 2.3,
+      "fee": { "free_min": 10, "base_min": 30, "base_fee": 3000, "unit_min": 10, "unit_fee": 1000, "daily_max": 30000 },
+      "discounts": [
+        { "name": "건물 내 학원 영수증 1시간 무료", "free_min": 60, "condition": "academy_receipt", "verified": false }
+      ],
+      "realtime_spaces": 14,
+      "realtime_spaces_updated_at": "2026-11-15T17:18:00",
+      "valet": null,
+      "pickup_zone_legal": true,
+      "source": "제휴 운영사 피드(샘플 값)",
+      "updated_at": "2026-11-15T17:18:00"
+    },
+    {
+      "id": "P-C",
+      "name": "샘플 공영주차장 C (조기 마감)",
+      "operator_type": "public",
+      "lat": 37.49860,
+      "lng": 127.06150,
+      "entrance": "대로변 진입",
+      "open": "08:00",
+      "close": "18:00",
+      "height_limit_m": 2.1,
+      "fee": { "free_min": 0, "base_min": 5, "base_fee": 200, "unit_min": 5, "unit_fee": 200, "daily_max": 15000 },
+      "discounts": [],
+      "realtime_spaces": null,
+      "valet": null,
+      "pickup_zone_legal": true,
+      "source": "공공 주차시설 데이터(샘플 값)",
+      "updated_at": "2026-11-14T09:00:00"
+    },
+    {
+      "id": "P-D",
+      "name": "샘플 기계식주차장 D",
+      "operator_type": "private",
+      "lat": 37.50040,
+      "lng": 127.06300,
+      "entrance": "골목 안 기계식 입구",
+      "open": "00:00",
+      "close": "24:00",
+      "height_limit_m": 1.85,
+      "fee": { "free_min": 0, "base_min": 60, "base_fee": 4000, "unit_min": 30, "unit_fee": 2000, "daily_max": 25000 },
+      "discounts": [],
+      "realtime_spaces": null,
+      "valet": null,
+      "pickup_zone_legal": false,
+      "source": "운영사 홈페이지 수기 확인(샘플 값)",
+      "updated_at": "2026-11-01T12:00:00"
+    }
+  ]
+}

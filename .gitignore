@@ -1,0 +1,10 @@
+# 공모전 접수 양식(개인정보·대외비 문구 포함) — 저장소에 올리지 않음
+*.pdf
+*.docx
+*.hwp
+
+__pycache__/
+*.pyc
+.venv/
+.env
+.claude/
