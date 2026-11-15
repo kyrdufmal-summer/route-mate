@@ -73,6 +73,14 @@ const Voice = (() => {
   }
 
   function speak(text, { chimeFirst = true, onstart, onend } = {}) {
+    // 차량용 앱(APK) 안에서는 차량(Android) 시스템 TTS 로 읽는다
+    const native = window.RouteMateNative;
+    if (prefs.on && native && native.available && native.available()) {
+      if (chimeFirst) chime();
+      onstart && onstart();
+      setTimeout(() => { native.speak(spoken(text), prefs.rate); onend && setTimeout(onend, 4000); }, chimeFirst ? 380 : 0);
+      return;
+    }
     if (!prefs.on || !("speechSynthesis" in window)) { onend && onend(); return; }
     speechSynthesis.cancel();
     const v = current();
