@@ -87,6 +87,7 @@ class SessionIn(BaseModel):
     driver: DriverIn = DriverIn()
     consent_location: bool = True
     purpose: Literal["pickup", "hospital", "other"] = "pickup"
+    parked: bool = True               # False: 주차 없이 바로 일하러 감 (돌아와서 return_point 에 주차)
     wishlist: list[str] = []          # 동네 중고거래로 찾고 있는 물건 (예: "유아 카시트")
     wish_max_price: int | None = None
 
@@ -130,6 +131,7 @@ def _fw(s, now: datetime) -> FlexWindow:
         max_drive_min=d["max_drive_min"],
         wants_work=d["wants_work"],
         categories=d["categories"],
+        parked=d.get("parked", True),
     )
 
 
@@ -625,6 +627,8 @@ def enforcement(lat: float, lng: float, now: datetime | None = None, radius_m: i
             "id": z["id"], "name": z["name"], "kind": z["kind"], "fine_car": z["fine_car"], "fine_note": z["fine_note"],
             "today_estimate_total": day_total,
             "today_estimate_so_far": int(day_total * elapsed / span),
+            "daily_cases": z["daily_cases_estimate"],
+            "today_cases_so_far": int(z["daily_cases_estimate"] * elapsed / span),
             "per_minute": round(day_total / span, 1),
             "source": z["source"], "is_estimate": True,
         })

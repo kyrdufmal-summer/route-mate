@@ -207,3 +207,24 @@ class PublicDemoIsolationTest(unittest.TestCase):
         session()  # 새 이용이 시작될 때 오래된 기록 정리
         self.assertNotIn(a, m.store.sessions)
         self.assertNotIn("G-101", m.store.gig_owner)
+
+
+class ParkOrWorkChoiceTest(unittest.TestCase):
+    """주차를 먼저 강요하지 않는다: 주차 없이 바로 일하러 가는 것도 고를 수 있어야 한다."""
+
+    def setUp(self):
+        m.store = Store()
+
+    def test_work_without_parking(self):
+        sid = session(position={"lat": 37.49880, "lng": 127.06230}, return_point=LOT_B, parked=False)
+        r = m.recommendations(sid, now=T("17:20"))
+        ids = [g["gig_id"] for g in r["recommended"]]
+        self.assertIn("G-101", ids)                         # 차로 하는 일은 바로 가능
+        self.assertNotIn("G-102", ids)                      # 걸어서 하는 일은 주차 후에만
+        why = next(g["reasons"][0] for g in r["excluded"] if g["gig_id"] == "G-102")
+        self.assertIn("차를 세운 뒤", why)
+
+    def test_enforcement_reports_case_counts(self):
+        z = m.enforcement(lat=37.49985, lng=127.0633, now=T("17:20"))["zones"][0]
+        self.assertEqual(z["daily_cases"], 88)
+        self.assertLess(z["today_cases_so_far"], 88)

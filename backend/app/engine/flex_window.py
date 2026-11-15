@@ -42,6 +42,7 @@ class FlexWindow:
     max_drive_min: int | None = None  # 총 운전(우회) 허용 상한
     wants_work: bool = True
     categories: list[str] | None = None  # 희망 업무 유형 (None = 전체)
+    parked: bool = True                  # 주차하지 않고 바로 일하러 가는 경우 False
 
 
 @dataclass
@@ -91,6 +92,8 @@ def hard_filters(gig: dict, fw: FlexWindow, driver: DriverProfile) -> list[str]:
         reasons.append("차량에 실을 수 없는 짐")
     if not gig.get("on_foot") and not gig.get("parking_at_site", {}).get("available"):
         reasons.append("업무지에 합법적으로 세울 곳이 확인되지 않음")
+    if gig.get("on_foot") and not fw.parked:
+        reasons.append("차를 세운 뒤 걸어서 하는 일이라 지금은 어려움")
     if fw.categories and gig.get("category") not in fw.categories:
         reasons.append("원하는 업무 유형이 아님")
     return reasons

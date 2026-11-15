@@ -171,8 +171,13 @@ async function loadParking() {
 function renderPark() {
   const lots = S.lots;
   return `
-    <h2>목적지 근처 주차장 ${lots.length}곳</h2>
-    <p class="lead">${hhmm(S.now)}에 도착해 ${hhmm(S.scenario.pickup_end)}까지 머무는 기준으로 비교했어요.</p>
+    <h2>기다리는 동안 어떻게 할까요?</h2>
+    <p class="lead">${hhmm(S.now)} 도착 · ${hhmm(S.scenario.pickup_end)}까지 기다려야 해요. 어느 쪽이든 고르실 수 있어요.</p>
+    <div class="segmented choice2">
+      <button data-choose="park"><span class="big-e">🅿️</span>주차하고 기다리기<small>${lots[0] ? `${esc(lotShort(lots[0]))} 기준 주차비 약 ${won(lots[0].fee_estimate)}` : "근처 주차장 비교"}</small></button>
+      <button data-choose="work"><span class="big-e">💼</span>그 시간에 일하기<small>주차 없이 바로 출발 · 일 마치고 돌아와서 주차하면 주차비도 줄어요</small></button>
+    </div>
+    <h4>주차하고 기다리실 거면 — 목적지 근처 주차장 ${lots.length}곳</h4>
     <div class="chips">
       <button class="chip-toggle ${S.filters.pickupOnly ? "on" : ""}" data-filter="pickupOnly">합법 승하차 가능한 곳만</button>
       <button class="chip-toggle ${S.filters.receipt ? "on" : ""}" data-filter="receipt">학원 영수증 있어요</button>
@@ -225,6 +230,7 @@ function renderTime() {
   const left = minutesUntil(p.returnBy);
   return `
     <h2>언제까지 돌아와야 하나요?</h2>
+    ${!S.lot && S.lots[0] ? `<div class="notice ok">주차 없이 바로 일 보러 가요. 일 마치고 ${esc(lotShort(S.lots[0]))}에 세우시면 돼요.</div>` : ""}
     <p class="lead">${S.lot ? esc(clean(S.lot.name)) + "에 세웠어요. " : ""}무엇을 기다리시는지, 언제까지 오면 되는지 알려 주세요.</p>
     <div class="purpose">${Object.entries(PURPOSE).map(([k, v]) => `<button class="chip-toggle ${p.purpose === k ? "on" : ""}" data-purpose="${k}">${v[1]} ${v[0]}</button>`).join("")}</div>
     <div class="time-picker">
@@ -284,7 +290,9 @@ async function startPlan() {
     const r = await api("/api/sessions", {
       method: "POST",
       body: JSON.stringify({
-        position: { lat: S.lot.lat, lng: S.lot.lng }, return_point: null,
+        position: S.lot ? { lat: S.lot.lat, lng: S.lot.lng } : S.scenario.vehicle_position,
+        return_point: S.lot ? null : (S.lots[0] ? { lat: S.lots[0].lat, lng: S.lots[0].lng } : null),
+        parked: !!S.lot,
         return_by: `${S.now.slice(0, 10)}T${p.returnBy}:00`, now: S.now,
         min_buffer_min: p.buffer, max_drive_min: p.maxDrive === "" ? null : Number(p.maxDrive),
         wants_work: p.wantsWork, radar_keywords: p.keywords, driver: S.scenario.driver, consent_location: p.consent, purpose: p.purpose, wishlist: p.wishlist,
@@ -517,6 +525,11 @@ document.addEventListener("click", async (e) => {
   if (d.shift) { S.plan.returnBy = shiftTime(S.plan.returnBy, Number(d.shift)); render(); return; }
   if (d.work) { S.plan.wantsWork = d.work === "1"; render(); return; }
   if (d.kw) { const k = S.plan.keywords; S.plan.keywords = k.includes(d.kw) ? k.filter((x) => x !== d.kw) : [...k, d.kw]; render(); return; }
+  if (d.choose === "work") {
+    S.lot = null; S.plan.wantsWork = true; go("time");
+    return say("네, 주차 없이 먼저 일 보러 가요. 몇 시까지 돌아오면 될까요? 돌아오실 때 근처 주차장으로 안내할게요.");
+  }
+  if (d.choose === "park") { $("#stage").querySelector("h4")?.scrollIntoView({ behavior: "smooth" }); return say("네, 아래에서 주차장을 골라 주세요."); }
   if (d.purpose) { S.plan.purpose = d.purpose; render(); return; }
   if (d.left) { S.left = d.left; $$(".left-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.left === d.left));
     $("#glance").classList.toggle("hidden", d.left !== "glance"); $("#mapBox").classList.toggle("hidden", d.left !== "map"); render(); return; }
@@ -738,8 +751,8 @@ function renderGlance() {
         <div class="x">vs</div>
         <div class="box bad"><small>불법 주정차</small><b>${won(z.fine_car)}</b></div>
       </div>
-      <div class="counter">오늘 이 구역 예상 단속액<br><b id="enfCounter">${won(Math.floor(S.enfBase))}</b>
-        <small>하루 예상 약 ${Math.round(z.today_estimate_total / 10000).toLocaleString("ko-KR")}만 원 · ${esc(z.source)} · 시연용 추정치</small></div>
+      <div class="counter">오늘 이 구역 단속<br><b>약 ${z.today_cases_so_far}건</b>
+        <small>하루 평균 ${z.daily_cases}건 · ${esc(z.source)} · 시연용 추정치</small></div>
     </div>` : "";
 
   el.innerHTML = hero + strip + `<div class="sec-title">${S.session ? '<span class="dot-live"></span>' : ""}지금 주변 상황</div><div class="live">${live}</div>` + fine;
@@ -852,10 +865,9 @@ async function init() {
   await loadEnforcement();
   try { const d = S.scenario.destination; S.spots = (await api(`/api/waiting-spots?lat=${d.lat}&lng=${d.lng}&now=${encodeURIComponent(S.now)}`)).spots; } catch (_) {}
   render();
-  setInterval(tickCounter, 250);
   const z = S.enf?.zones?.[0];
   $("#bubbleText").textContent = z
-    ? `주차장 ${S.lots.length}곳 찾았어요. ${z.name}은 ${z.kind}이라, 잠깐 세워도 과태료가 ${Math.round(z.fine_car / 10000)}만 원이에요.`
+    ? `도착하셨네요. 주차하고 기다리실지, 그 시간에 일하실지 골라 주세요. 참고로 ${z.name}은 ${z.kind}이라 잠깐 세워도 과태료가 ${Math.round(z.fine_car / 10000)}만 원이에요.`
     : `주차장 ${S.lots.length}곳 찾았어요.`;
   S.lastSpoken = $("#bubbleText").textContent;
 }

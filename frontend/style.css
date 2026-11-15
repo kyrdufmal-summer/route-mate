@@ -160,6 +160,8 @@ details.more .detail { color: var(--sub); font-size: 13px; line-height: 1.7; mar
 .consent { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--sub); margin: 6px 0 14px; }
 .consent input { margin-top: 2px; accent-color: var(--accent); }
 
+.choice2 button { font-size: 17px; padding: 16px; }
+.choice2 .big-e { display: block; font-size: 28px; margin-bottom: 6px; }
 .sticky-cta { position: sticky; bottom: 0; padding: 18px 0 2px; background: linear-gradient(rgba(17, 26, 43, 0), var(--screen) 40%); }
 
 /* 남은 시간 링 */
