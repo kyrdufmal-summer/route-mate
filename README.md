@@ -13,6 +13,18 @@
 
 ---
 
+## 제출 정보 (공모전 가이드 항목)
+
+| 항목 | 내용 |
+|---|---|
+| 앱 이름 · 한 줄 소개 | **ROUTE MATE** — 정차 위치·이동 경로와 사용자가 정한 복귀 시각을 결합해 안전한 주차·생활정보를 안내하고, 원할 때만 주변 초단기 일감을 연결하는 차량용 생활동선 에이전트 |
+| APK 위치 | [`apk/김여름_ROUTEMATE_release.apk`](apk/) (release 서명, 패키지 `io.routemate.app`, versionName 0.1.0, minSdk 28 / targetSdk 34) |
+| APK 구성 | 차량 중앙 화면에 ROUTE MATE 서비스 화면을 띄우는 Android 앱(WebView)입니다. 음성 안내는 차량(Android) 시스템 TTS 엔진으로 읽고(`RouteMateNative` 브리지), 판단 로직은 서버(FastAPI)에서 처리합니다. 인터넷 연결이 필요합니다. |
+| 실행 방법 | ① `adb install apk/김여름_ROUTEMATE_release.apk` 후 앱 목록에서 **ROUTE MATE** 실행 ② 또는 브라우저로 https://route-mate-eboj.onrender.com 접속 ③ 서버 직접 실행은 아래 '실행 방법' 참고 |
+| 테스트 환경 · 필요한 설정 | 인터넷 연결 필요(서버: Render 무료 플랜, 첫 접속 시 최대 1분 대기). 개발: Windows 11 · Python 3.13 · JDK 17 · Android SDK build-tools 34.0.0 / platform android-30. 한국어 TTS 음성 데이터가 있는 기기에서 음성 안내가 나옵니다. |
+| Pleos Connect 에뮬레이터 버전 · 화면 규격 | **Pleos Connect 에뮬레이터에서는 아직 검증하지 못했습니다.** 화면은 차량 중앙 디스플레이 가로형 16:9(1280×720 기준)에 맞춰 설계했고, 웹 시뮬레이터에서 1280~1360px 폭으로 확인했습니다. |
+| APK 빌드 | `android/build.sh` (Gradle 없이 Android SDK 빌드 도구로 aapt2 → javac → d8 → zipalign → apksigner). 서명 키는 저장소에 넣지 않습니다. |
+
 ## 이번 제출에서 실제로 동작하는 기능
 
 기획서의 기능 이름(영문)은 괄호 안에 함께 적었습니다.
@@ -40,7 +52,7 @@
 
 기획서의 "실제 구현 성과를 허위로 기재하지 않는다"는 원칙에 따라 그대로 적습니다.
 
-- **Pleos Connect 차량용 앱(APK)** — 개발 PC에 Android 개발 도구가 없어 이번에는 빌드하지 못했습니다. 대신 차량 중앙 화면과 같은 흐름을 **웹 시뮬레이터**(`frontend/`)로 만들었고, 서버 API는 차량용 앱이 그대로 호출할 수 있게 설계했습니다.
+- **Pleos Connect 네이티브 연동** — 이번 APK는 서비스 화면을 띄우는 WebView 앱입니다. Pleos SDK(위치·차량 상태·내비게이션) 직접 연동과 Pleos Connect 에뮬레이터 검증은 아직 하지 못했습니다.
 - **Pleos SDK 연동** (위치·차량 상태·내비게이션·음성) — 지금은 `engine/geo.py`의 보수적인 거리·시간 추정과 브라우저 음성 안내로 대신합니다. 실제 API·권한·에뮬레이터 지원 범위를 Pleos 공식 문서로 확인한 뒤 교체할 예정입니다.
 - **PostgreSQL** — 지금은 메모리 저장소와 잠금으로 처리합니다. 같은 규칙을 `SELECT … FOR UPDATE`와 중복 방지 키 고유 제약으로 옮길 예정입니다.
 - **실제 데이터** — 공공 주차시설 데이터와 제휴 운영사·매장 정보는 아직 연결하지 않았습니다. 빈자리·발레파킹·실시간 요금은 확인할 수 있는 출처가 없으면 "미확인"으로 표시하는 동작까지만 구현했습니다.
