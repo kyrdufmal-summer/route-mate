@@ -676,7 +676,7 @@ function renderGlance() {
     const classEnd = hhmm(S.scenario.pickup_end) === "18:10" ? "18:00" : hhmm(S.scenario.pickup_end);
     label = `${pPlace} 끝나는 ${classEnd}까지`;
     num = minutesUntil(classEnd);
-    next = S.stage === "park" ? "먼저 차 세울 곳을 고르세요" : "돌아올 시각을 정해 주세요";
+    next = S.stage === "park" ? "주차할지, 그 시간에 일할지 골라 주세요" : "돌아올 시각을 정해 주세요";
   } else {
     label = `${pLabel} ${S.plan.returnBy}까지`;
     num = minutesUntil(S.plan.returnBy);
