@@ -100,13 +100,13 @@ class ApiScenarioTest(unittest.TestCase):
         sid = new_session()
         accept(sid)
         r = m.vehicle_event(sid, m.EventIn(type="traffic_delay", delay_min=30, now=datetime(2026, 11, 15, 17, 30)))
-        self.assertIn("지연을 알리고", r["guidance"][0])
+        self.assertIn("늦는다고 알리고", r["guidance"][0])
 
     def test_traffic_delay_ok_when_on_time(self):
         sid = new_session()
         accept(sid)
         r = m.vehicle_event(sid, m.EventIn(type="traffic_delay", delay_min=2, now=NOW))
-        self.assertIn("돌아올 수 있어요", r["guidance"][0])
+        self.assertIn("이면 돌아와요", r["guidance"][0])
 
     def test_parking_full_gives_legal_alternatives(self):
         sid = new_session()

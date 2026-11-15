@@ -8,14 +8,20 @@
       "partner": "샘플 제휴 꽃집",
       "partner_verified": true,
       "legal_reviewed": true,
-      "lat": 37.50680,
-      "lng": 127.06500,
+      "lat": 37.5068,
+      "lng": 127.065,
       "task_min": 10,
       "pay": 12000,
       "requires_insurance": "gig_delivery",
-      "required_qualifications": ["driver_license"],
+      "required_qualifications": [
+        "driver_license"
+      ],
       "cargo": "small",
-      "parking_at_site": { "available": true, "fee": 0, "note": "매장 전용 정차면 5분 무료(제휴처 제공 정보)" },
+      "parking_at_site": {
+        "available": true,
+        "fee": 0,
+        "note": "매장 전용 정차면 5분 무료(제휴처 제공 정보)"
+      },
       "expires_at": "2026-11-15T18:30:00",
       "trust": 0.92
     },
@@ -26,14 +32,18 @@
       "partner": "샘플 제휴 반찬가게",
       "partner_verified": true,
       "legal_reviewed": true,
-      "lat": 37.50070,
-      "lng": 127.06420,
+      "lat": 37.5007,
+      "lng": 127.0642,
       "task_min": 15,
       "pay": 11000,
       "requires_insurance": null,
       "required_qualifications": [],
       "cargo": "none",
-      "parking_at_site": { "available": false, "fee": 0, "note": "현 주차장에서 도보 이동" },
+      "parking_at_site": {
+        "available": false,
+        "fee": 0,
+        "note": "현 주차장에서 도보 이동"
+      },
       "on_foot": true,
       "expires_at": "2026-11-15T18:00:00",
       "trust": 0.88
@@ -45,14 +55,18 @@
       "partner": "샘플 제휴 약국",
       "partner_verified": true,
       "legal_reviewed": true,
-      "lat": 37.50300,
-      "lng": 127.06800,
+      "lat": 37.503,
+      "lng": 127.068,
       "task_min": 40,
       "pay": 25000,
       "requires_insurance": null,
       "required_qualifications": [],
       "cargo": "none",
-      "parking_at_site": { "available": true, "fee": 1000, "note": "인근 공영주차장 이용" },
+      "parking_at_site": {
+        "available": true,
+        "fee": 1000,
+        "note": "인근 공영주차장 이용"
+      },
       "expires_at": "2026-11-15T19:00:00",
       "trust": 0.85
     },
@@ -63,16 +77,22 @@
       "partner": "샘플 제휴 가구점",
       "partner_verified": true,
       "legal_reviewed": true,
-      "lat": 37.50150,
-      "lng": 127.06600,
+      "lat": 37.5015,
+      "lng": 127.066,
       "task_min": 10,
       "pay": 20000,
       "requires_insurance": "paid_transport",
-      "required_qualifications": ["driver_license"],
+      "required_qualifications": [
+        "driver_license"
+      ],
       "cargo": "large",
-      "parking_at_site": { "available": true, "fee": 0, "note": "" },
+      "parking_at_site": {
+        "available": true,
+        "fee": 0,
+        "note": ""
+      },
       "expires_at": "2026-11-15T19:00:00",
-      "trust": 0.80
+      "trust": 0.8
     },
     {
       "id": "G-105",
@@ -81,16 +101,20 @@
       "partner": "미확인 게시자",
       "partner_verified": false,
       "legal_reviewed": false,
-      "lat": 37.50000,
-      "lng": 127.06500,
+      "lat": 37.5,
+      "lng": 127.065,
       "task_min": 5,
       "pay": 30000,
       "requires_insurance": null,
       "required_qualifications": [],
       "cargo": "small",
-      "parking_at_site": { "available": false, "fee": 0, "note": "" },
+      "parking_at_site": {
+        "available": false,
+        "fee": 0,
+        "note": ""
+      },
       "expires_at": "2026-11-15T19:00:00",
-      "trust": 0.20
+      "trust": 0.2
     },
     {
       "id": "G-106",
@@ -99,16 +123,47 @@
       "partner": "샘플 제휴 세탁소",
       "partner_verified": true,
       "legal_reviewed": true,
-      "lat": 37.50100,
-      "lng": 127.06450,
+      "lat": 37.501,
+      "lng": 127.0645,
       "task_min": 5,
       "pay": 7000,
       "requires_insurance": null,
-      "required_qualifications": ["driver_license"],
+      "required_qualifications": [
+        "driver_license"
+      ],
       "cargo": "small",
-      "parking_at_site": { "available": true, "fee": 0, "note": "" },
+      "parking_at_site": {
+        "available": true,
+        "fee": 0,
+        "note": ""
+      },
       "expires_at": "2026-11-15T17:00:00",
-      "trust": 0.90
+      "trust": 0.9
+    },
+    {
+      "id": "G-107",
+      "title": "[샘플] 빵집 케이크를 받아 근처 집에 전달",
+      "category": "small_delivery",
+      "partner": "샘플 제휴 빵집",
+      "partner_verified": true,
+      "legal_reviewed": true,
+      "lat": 37.5025,
+      "lng": 127.0615,
+      "task_min": 8,
+      "pay": 9000,
+      "requires_insurance": "gig_delivery",
+      "required_qualifications": [
+        "driver_license"
+      ],
+      "cargo": "small",
+      "parking_at_site": {
+        "available": true,
+        "fee": 0,
+        "note": "매장 앞 정차면(제휴처 제공 정보)"
+      },
+      "posted_at": "2026-11-15T17:33:00",
+      "expires_at": "2026-11-15T18:30:00",
+      "trust": 0.9
     }
   ]
 }

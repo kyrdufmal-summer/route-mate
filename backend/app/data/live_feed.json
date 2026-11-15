@@ -1,0 +1,38 @@
+{
+  "_notice": "시연용 실시간 상황 시간표입니다. 실서비스에서는 교통정보·기상·학원/병원 알림 연동으로 대체합니다.",
+  "incidents": [
+    {
+      "id": "F-ACC-1",
+      "type": "accident",
+      "title": "학원가 사거리 접촉사고",
+      "lat": 37.50330,
+      "lng": 127.06430,
+      "radius_m": 200,
+      "delay_min": 7,
+      "starts": "17:27",
+      "ends": "18:20",
+      "source": "교통정보(샘플)"
+    },
+    {
+      "id": "F-RAIN-1",
+      "type": "weather",
+      "title": "비",
+      "delay_min": 3,
+      "starts": "17:38",
+      "ends": "19:00",
+      "source": "기상정보(샘플)"
+    },
+    {
+      "id": "F-RUSH-1",
+      "type": "school_rush",
+      "title": "학원 하원 시간 정체",
+      "lat": 37.49985,
+      "lng": 127.06330,
+      "radius_m": 250,
+      "delay_min": 4,
+      "starts": "17:47",
+      "ends": "18:15",
+      "source": "교통정보(샘플)"
+    }
+  ]
+}

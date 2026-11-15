@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ROUTE MATE</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/static/style.css?v=3">
+<link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
 
@@ -22,10 +22,17 @@
   </header>
 
   <div class="main">
-    <!-- 지도 -->
+    <!-- 한눈에 보기 / 지도 -->
     <section class="map-wrap">
-      <svg id="map" viewBox="0 0 520 560" role="img" aria-label="주변 지도"></svg>
-      <div class="map-caption" id="mapCaption">목적지 주변</div>
+      <div class="left-tabs">
+        <button class="on" data-left="glance">한눈에 보기</button>
+        <button data-left="map">지도</button>
+      </div>
+      <div id="glance" class="glance"></div>
+      <div id="mapBox" class="map-box hidden">
+        <svg id="map" viewBox="0 0 520 560" role="img" aria-label="주변 지도"></svg>
+        <div class="map-caption" id="mapCaption">목적지 주변</div>
+      </div>
     </section>
 
     <!-- 도우미 패널 -->
@@ -79,20 +86,26 @@
 <section class="demo-tools">
   <div class="demo-head"><b>시연 도구</b><span>실제 차량 화면에는 없는 영역이에요 · 주차장·일감·상점 정보는 모두 가상 데이터</span></div>
   <div class="demo-row">
+    <button id="autoplay" class="play">▶ 실시간 자동 진행 (1분씩)</button>
     <button id="tick">시각 +5분</button>
     <button id="toggleDrive">주행 ↔ 정차</button>
-    <span class="sep"></span>
-    <button data-event="traffic_delay">교통 정체 (10분 지연)</button>
-    <button data-event="gig_cancelled">업체가 업무 취소</button>
-    <button data-event="parking_full">복귀할 주차장 만차</button>
-    <button id="resume">추천 다시 받기</button>
-    <span class="sep"></span>
     <button id="restart">처음부터</button>
   </div>
+  <div class="demo-row">
+    <span class="demo-label">상황 만들기</span>
+    <button data-incident="accident">🚨 돌아오는 길 사고</button>
+    <button data-incident="weather">🌧 비 오기 시작</button>
+    <button data-incident="school_rush">🚗 학원 앞 정체</button>
+    <button data-incident="schedule_change">⏰ 수업 15분 연장 알림</button>
+    <button data-event="gig_cancelled">업체가 일 취소</button>
+    <button data-event="parking_full">돌아갈 주차장 만차</button>
+    <button id="resume">추천 다시 받기</button>
+  </div>
+  <p class="demo-note">자동 진행을 켜면 17:27 사고, 17:33 새 일감, 17:38 비, 17:47 학원 앞 정체가 시간표대로 일어나요.</p>
   <details><summary>이용 기록 (개발자 확인용)</summary><pre id="audit"></pre></details>
 </section>
 
-<script src="/static/voice.js?v=3"></script>
-<script src="/static/app.js?v=3"></script>
+<script src="/static/voice.js?v=7"></script>
+<script src="/static/app.js?v=7"></script>
 </body>
 </html>

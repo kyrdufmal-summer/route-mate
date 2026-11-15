@@ -15,12 +15,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .engine import intent as intent_mod
-from .engine.flex_window import DriverProfile, FlexWindow, evaluate_gig, match
+from .engine import situation as sit
+from .engine.flex_window import DriverProfile, FlexWindow, evaluate_gig, is_posted, match
 from .engine.geo import HeuristicEstimator, Point
 from .engine.parking import ParkingQuery, Vehicle, evaluate_lots
 from .engine.radar import radar
 from .engine.safety import DrivingLockError, VehicleState, brief_for_driving, require_parked
-from .engine.timeutil import fmt, minutes_between
+from .engine.timeutil import at_clock, fmt, minutes_between
 from .store import ConflictError, Store
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -85,6 +86,7 @@ class SessionIn(BaseModel):
     radar_keywords: list[str] = []
     driver: DriverIn = DriverIn()
     consent_location: bool = True
+    purpose: Literal["pickup", "hospital", "other"] = "pickup"
 
 
 class AcceptIn(BaseModel):
@@ -133,6 +135,22 @@ def _driver(s) -> DriverProfile:
     return DriverProfile(**s.data["driver"])
 
 
+def _incidents(now: datetime) -> list[dict]:
+    return sit.active_incidents(store.live_feed, store.manual_incidents, now)
+
+
+def _delay_for(fw: FlexWindow, now: datetime):
+    """실시간 상황(사고·정체·비)이 이 일감의 운전 구간에 주는 지연(분)."""
+    incs = _incidents(now)
+
+    def f(gig: dict) -> int:
+        if gig.get("on_foot"):
+            return 0
+        site = Point(gig["lat"], gig["lng"])
+        return sit.route_delay(incs, [(fw.position, site), (site, fw.return_point)])[0]
+    return f
+
+
 # ---------- API ----------
 @app.get("/api/health")
 def health():
@@ -179,6 +197,7 @@ def create_session(body: SessionIn):
     data = body.model_dump(mode="json")
     data["now"] = now.isoformat()
     data["return_by"] = body.return_by.isoformat()
+    data["announced"], data["dismissed"] = [], []
     s = store.create_session(data)
     return {"session_id": s.id, "window": {"now": fmt(now), "return_by": fmt(body.return_by),
                                            "available_min": minutes_between(now, body.return_by)}}
@@ -195,17 +214,17 @@ def recommendations(sid: str, now: datetime | None = None, gear: str = "P", spee
 
     if s.recommendations_paused:
         result = {"mode": "paused", "recommended": [], "excluded": [],
-                  "message": f"새 일감 추천을 멈췄어요({s.pause_reason}). 안전하게 돌아오는 길을 먼저 안내할게요."}
+                  "message": f"{s.pause_reason}. 지금은 새 일을 띄우지 않을게요."}
     elif s.assignment and s.assignment["state"] in ("accepted", "in_progress"):
-        result = {"mode": "assigned", "recommended": [], "excluded": [], "message": "진행 중인 업무가 있어요."}
+        result = {"mode": "assigned", "recommended": [], "excluded": [], "message": "하고 있는 일이 있어요."}
     else:
         hidden = store.taken_gigs(except_session=sid) | set(s.data.get("declined", []))
-        result = match(store.gigs, fw, _driver(s), est, taken=hidden)
+        result = match(store.gigs, fw, _driver(s), est, taken=hidden, delay_for=_delay_for(fw, now))
 
     if not vs.stationary:
         # 주행 중: 상세 목록 대신 짧은 음성 브리핑만
         n = len(result["recommended"])
-        msg = f"조건에 맞는 일감이 {n}건 있어요. 차를 세운 뒤 확인하세요." if n else "지금은 조건에 맞는 일감이 없어요."
+        msg = f"시간 맞는 일이 {n}개 있어요. 차 세우고 보세요." if n else "지금은 시간 맞는 일이 없어요."
         return {"driving": True, "voice_brief": brief_for_driving(msg), "count": n}
 
     return {"driving": False, **result, "radar": rad, "assignment": s.assignment,
@@ -227,9 +246,9 @@ def accept(sid: str, body: AcceptIn, idempotency_key: str = Header(..., alias="I
     now = _now(body.now)
     fw = _fw(s, now)
     # 수락 시점에 조건을 다시 검증 (그 사이 시간이 흘렀거나 보험·마감이 바뀌었을 수 있음)
-    ev = evaluate_gig(gig, fw, _driver(s), _estimator(s)).to_dict()
+    ev = evaluate_gig(gig, fw, _driver(s), _estimator(s), _delay_for(fw, now)(gig)).to_dict()
     if not ev["eligible"]:
-        raise HTTPException(409, {"message": "지금은 이 일감의 조건을 충족하지 않아요.", "reasons": ev["reasons"]})
+        raise HTTPException(409, {"message": "지금은 이 일을 하기 어려워요.", "reasons": ev["reasons"]})
     try:
         res = store.accept(sid, gig["id"], idempotency_key, ev)
     except ConflictError as e:
@@ -284,16 +303,16 @@ def vehicle_event(sid: str, body: EventIn):
         s.recommendations_paused = True
         if body.type == "traffic_delay":
             s.data["traffic_multiplier"] = 1.0 + max(body.delay_min, 0) / 10
-            s.pause_reason = f"교통 정체로 {body.delay_min}분 지연"
+            s.pause_reason = f"길이 막혀서 {body.delay_min}분쯤 늦어지고 있어요"
         elif body.type == "gig_cancelled":
-            s.pause_reason = "업무 취소"
+            s.pause_reason = "업체에서 일을 취소했어요"
         else:
-            s.pause_reason = "복귀할 주차장 만차"
+            s.pause_reason = "돌아갈 주차장이 꽉 찼어요"
     a = s.assignment
     active = a and a["state"] in ("accepted", "in_progress")
     if body.type == "gig_cancelled" and active:
         store.transition(sid, "cancelled", reason="partner_cancelled")
-        guidance.append("업무가 취소됐어요. 복귀 지점으로 안내할게요.")
+        guidance.append("업체에서 일을 취소했어요. 그냥 돌아오시면 돼요.")
     elif body.type == "traffic_delay" and active:
         bd = a["evaluation"]["breakdown"]
         m = s.data["traffic_multiplier"]
@@ -306,19 +325,19 @@ def vehicle_event(sid: str, body: EventIn):
             remaining += math.ceil(go * scale)
         eta = now + timedelta(minutes=remaining)
         if eta > fw.return_by:
-            guidance.append(f"약속한 {fmt(fw.return_by)}보다 늦은 {fmt(eta)}쯤 돌아오게 돼요. 업체에 지연을 알리고 바로 돌아가세요.")
+            guidance.append(f"길이 막혀서 {fmt(eta)}쯤 도착해요. {fmt(fw.return_by)}보다 늦으니까, 업체에 늦는다고 알리고 바로 출발하세요.")
         else:
-            guidance.append(f"지연을 반영해도 {fmt(eta)}쯤 돌아올 수 있어요. 업무를 마치면 바로 복귀하세요.")
+            guidance.append(f"길이 좀 막히지만 {fmt(eta)}이면 돌아와요. 끝나면 바로 출발하세요.")
     elif body.type == "parking_full":
         q = ParkingQuery(origin=fw.return_point, destination=fw.return_point, now=now,
                          stay_until=fw.return_by + timedelta(minutes=15), pickup_only=True)
         rp = fw.return_point
         others = [lot for lot in store.parking_lots if (lot["lat"], lot["lng"]) != (rp.lat, rp.lng)]  # 꽉 찬 곳 제외
         alts = evaluate_lots(others, q, HeuristicEstimator())["recommended"][:2]
-        guidance.append("복귀할 주차장이 꽉 찼어요. 합법적으로 타고 내릴 수 있는 다른 곳을 안내할게요.")
+        guidance.append("돌아갈 주차장이 꽉 찼대요. 근처에 바로 세울 수 있는 곳을 찾아 뒀어요.")
         return {"paused": True, "reason": s.pause_reason, "guidance": guidance, "alternatives": alts}
     else:
-        guidance.append("새 일감 추천을 멈췄어요. 안전하게 돌아오는 길을 먼저 안내할게요.")
+        guidance.append("새 일은 잠깐 멈출게요. 돌아오는 것부터 챙기세요.")
     store.log(sid, "vehicle_event", type=body.type, delay_min=body.delay_min)
     return {"paused": True, "reason": s.pause_reason, "guidance": guidance, "assignment": s.assignment}
 
@@ -341,6 +360,145 @@ def delete_session(sid: str):
 @app.get("/api/audit")
 def audit(limit: int = 50):
     return store.audit[-limit:]
+
+
+# ---------- 실시간 상황 · 먼저 말 걸기 ----------
+def _live_view(incs: list[dict], fw: FlexWindow, assignment: dict | None) -> list[dict]:
+    """화면 상단 '지금 상황' 표시용. 내 경로·내 약속에 영향이 있는지 함께 표시."""
+    legs = []
+    if assignment and assignment["state"] in ("accepted", "in_progress"):
+        ev = assignment["evaluation"]
+        site = Point(ev["lat"], ev["lng"])
+        legs = [(fw.position, site), (site, fw.return_point)]
+    out = []
+    for inc in incs:
+        if inc["type"] == "schedule_change":
+            continue
+        mine = inc["type"] == "weather" or any(sit.hits_leg(inc, a, b) for a, b in legs) or (
+            "lat" in inc and sit.dist_to_segment_m(Point(inc["lat"], inc["lng"]), fw.return_point, fw.return_point)
+            <= inc.get("radius_m", 200) + 150)
+        out.append({"id": inc["id"], "type": inc["type"], "title": inc["title"], "delay_min": inc.get("delay_min", 0),
+                    "mine": bool(mine), "source": inc.get("source", ""), "lat": inc.get("lat"), "lng": inc.get("lng")})
+    return out
+
+
+@app.get("/api/sessions/{sid}/situation")
+def situation(sid: str, now: datetime | None = None, gear: str = "P", resting: bool = False):
+    """지금 상황을 보고, 사용자에게 먼저 말해야 할 것(개입)이 있는지 판단한다. 한 번 한 말은 다시 하지 않는다."""
+    s = _session_or_404(sid)
+    now = _now(now)
+    fw = _fw(s, now)
+    incs = [i for i in _incidents(now) if i["id"] not in s.data.get("dismissed", [])]
+    a = s.assignment
+    site = Point(a["evaluation"]["lat"], a["evaluation"]["lng"]) if a else None
+
+    # 세션 시작 뒤 새로 올라온 일감 중, 지금 조건에 맞는 것
+    started = datetime.fromisoformat(s.data["now"])
+    hidden = store.taken_gigs(except_session=sid) | set(s.data.get("declined", []))
+    fresh = [g for g in store.gigs if g.get("posted_at") and is_posted(g, now)
+             and datetime.fromisoformat(g["posted_at"]) > started and g["id"] not in hidden]
+    new_gigs = [r for r in match(fresh, fw, _driver(s), _estimator(s), delay_for=_delay_for(fw, now))["recommended"]] if fresh else []
+
+    ctx = sit.Context(now=now, return_by=fw.return_by, position=fw.position, return_point=fw.return_point,
+                      purpose=s.data.get("purpose", "pickup"), wants_work=fw.wants_work, resting=resting,
+                      parked=VehicleState(gear).parked, assignment=a, gig_site=site, incidents=incs, new_gigs=new_gigs)
+    announced = s.data.setdefault("announced", [])
+    fresh_ivs = [iv for iv in sit.assess(ctx) if iv["id"] not in announced]
+    for iv in fresh_ivs:
+        announced.append(iv["id"])
+        store.log(sid, "assistant_spoke", kind=iv["kind"], id=iv["id"])
+    spoken = [iv for iv in fresh_ivs if not iv.get("silent")]
+    return {"now": fmt(now), "return_by": fmt(fw.return_by), "live": _live_view(incs, fw, a), "interventions": spoken}
+
+
+class InterventionAction(BaseModel):
+    action: Literal["extend", "dismiss", "notify_partner", "cancel_gig", "show_gigs"]
+    minutes: int = 0
+    intervention_id: str = ""
+
+
+@app.post("/api/sessions/{sid}/situation/action")
+def situation_action(sid: str, body: InterventionAction):
+    s = _session_or_404(sid)
+    msg = ""
+    if body.action == "extend":
+        new_rb = datetime.fromisoformat(s.data["return_by"]) + timedelta(minutes=body.minutes)
+        s.data["return_by"] = new_rb.isoformat()
+        msg = f"네, 돌아올 시각을 {fmt(new_rb)}까지로 바꿨어요."
+    elif body.action == "notify_partner":
+        msg = "업체에 '조금 늦을 것 같아요'라고 보냈어요. (시연에서는 실제로 보내지 않아요)"
+    elif body.action == "cancel_gig":
+        if s.assignment and s.assignment["state"] in ("accepted", "in_progress"):
+            store.transition(sid, "cancelled", reason="late_risk")
+        msg = "일은 취소했어요. 천천히, 안전하게 돌아오세요."
+    elif body.action == "dismiss":
+        msg = "네, 알겠어요."
+    store.log(sid, "intervention_action", action=body.action, id=body.intervention_id)
+    return {"message": msg, "return_by": fmt(datetime.fromisoformat(s.data["return_by"])), "assignment": s.assignment}
+
+
+class IncidentIn(BaseModel):
+    type: Literal["accident", "weather", "school_rush", "schedule_change"]
+    now: datetime | None = None
+    minutes: int = 15
+
+
+@app.post("/api/demo/incidents", status_code=201)
+def add_incident(body: IncidentIn, sid: str | None = None):
+    """시연 도구: 지금 이 순간 상황을 하나 만든다. 사고는 진행 중인 일의 경로 위(없으면 목적지 근처)에 만든다."""
+    now = _now(body.now)
+    n = len(store.manual_incidents) + 1
+    inc: dict = {"id": f"M-{n}", "type": body.type, "starts": now.isoformat(),
+                 "ends": (now + timedelta(minutes=60)).isoformat(), "source": "시연 도구"}
+    sc = demo_scenario()
+    lat, lng = sc["destination"]["lat"], sc["destination"]["lng"]
+    s = store.sessions.get(sid) if sid else None
+    if s and s.assignment:
+        ev = s.assignment["evaluation"]
+        rp = s.data["return_point"] or s.data["position"]
+        lat, lng = (ev["lat"] + rp["lat"]) / 2, (ev["lng"] + rp["lng"]) / 2
+    if body.type == "accident":
+        inc.update(title="돌아오는 길 교통사고", lat=lat, lng=lng, radius_m=250, delay_min=8)
+    elif body.type == "weather":
+        inc.update(title="비", delay_min=3)
+    elif body.type == "school_rush":
+        inc.update(title="학원 앞 정체", lat=sc["destination"]["lat"], lng=sc["destination"]["lng"], radius_m=250, delay_min=5)
+    else:
+        inc.update(title="끝나는 시간 변경", extend_min=body.minutes, source="학원·병원 알림(연동 가정)")
+    store.manual_incidents.append(inc)
+    return inc
+
+
+@app.delete("/api/demo/incidents", status_code=204)
+def clear_incidents():
+    """시연 도구: 직접 만든 상황을 모두 지운다 (처음부터 다시 할 때)."""
+    store.manual_incidents.clear()
+
+
+@app.get("/api/enforcement")
+def enforcement(lat: float, lng: float, now: datetime | None = None, radius_m: int = 400):
+    """목적지 주변 불법 주정차 단속 구간과 과태료, 오늘 예상 단속액(시연용 추정).
+    단속 시간대·카메라 위치처럼 단속을 피하는 데 쓰일 정보는 내보내지 않는다. 합법 주차를 권하는 데에만 쓴다."""
+    now = _now(now)
+    here = Point(lat, lng)
+    out = []
+    for z in store.enforcement:
+        d = sit.dist_to_segment_m(Point(z["lat"], z["lng"]), here, here)
+        if d > radius_m + z["radius_m"]:
+            continue
+        open_t, close_t = at_clock(now, z["open"]), at_clock(now, z["close"])
+        span = max(1, minutes_between(open_t, close_t))
+        elapsed = min(max(minutes_between(open_t, now), 0), span)
+        day_total = z["daily_cases_estimate"] * z["fine_car"]
+        out.append({
+            "id": z["id"], "name": z["name"], "kind": z["kind"], "fine_car": z["fine_car"], "fine_note": z["fine_note"],
+            "today_estimate_total": day_total,
+            "today_estimate_so_far": int(day_total * elapsed / span),
+            "per_minute": round(day_total / span, 1),
+            "source": z["source"], "is_estimate": True,
+        })
+    out.sort(key=lambda z: -z["fine_car"])
+    return {"zones": out, "notice": "시연용 추정치예요. 과태료는 승용차 기준이에요."}
 
 
 # ---------- vehicle UI simulator ----------

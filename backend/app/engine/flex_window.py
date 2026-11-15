@@ -96,7 +96,7 @@ def hard_filters(gig: dict, fw: FlexWindow, driver: DriverProfile) -> list[str]:
     return reasons
 
 
-def time_budget(gig: dict, fw: FlexWindow, est: RouteEstimator) -> tuple[dict[str, int], float]:
+def time_budget(gig: dict, fw: FlexWindow, est: RouteEstimator, delay_min: int = 0) -> tuple[dict[str, int], float]:
     """(B) 이동·업무·복귀·안전여유 합산. 반환: (분 단위 내역, 총 주행 km)"""
     site = Point(gig["lat"], gig["lng"])
     if gig.get("on_foot"):
@@ -117,24 +117,30 @@ def time_budget(gig: dict, fw: FlexWindow, est: RouteEstimator) -> tuple[dict[st
         travel_label[1]: back,
         "safety_buffer": buffer,
     }
+    if delay_min > 0 and not gig.get("on_foot"):
+        breakdown["traffic_delay"] = delay_min  # 사고·정체·비 등 실시간 상황으로 늘어난 시간
     breakdown["total"] = sum(breakdown.values())
     return breakdown, km
 
 
-def evaluate_gig(gig: dict, fw: FlexWindow, driver: DriverProfile, est: RouteEstimator) -> GigEvaluation:
+def evaluate_gig(gig: dict, fw: FlexWindow, driver: DriverProfile, est: RouteEstimator,
+                 delay_min: int = 0) -> GigEvaluation:
     base = dict(gig_id=gig["id"], title=gig["title"], partner=gig.get("partner"), pay=gig["pay"],
                 lat=gig["lat"], lng=gig["lng"], trust=gig.get("trust"))
     reasons = hard_filters(gig, fw, driver)
     if reasons:
         return GigEvaluation(eligible=False, reasons=reasons, **base)
 
-    breakdown, km = time_budget(gig, fw, est)
+    breakdown, km = time_budget(gig, fw, est, delay_min)
     finish = fw.now + timedelta(minutes=breakdown["total"])
     slack = minutes_between(finish, fw.return_by)
     # (C) 복귀 마감 초과 → 제외
     if finish > fw.return_by:
+        why = f"{fmt(finish)}에 돌아오게 되어 복귀 시각({fmt(fw.return_by)})을 넘김"
+        if breakdown.get("traffic_delay"):
+            why = f"지금 교통 상황(+{breakdown['traffic_delay']}분)으로는 " + why
         return GigEvaluation(eligible=False, breakdown=breakdown, finish_at=fmt(finish), slack_min=slack,
-                             reasons=[f"{fmt(finish)}에 돌아오게 되어 복귀 시각({fmt(fw.return_by)})을 넘김"], **base)
+                             reasons=[why], **base)
     if datetime.fromisoformat(gig["expires_at"]) < fw.now + timedelta(minutes=breakdown["total"] - breakdown["safety_buffer"]):
         return GigEvaluation(eligible=False, breakdown=breakdown, reasons=["모집 마감 전에 끝낼 수 없음"], **base)
     drive_total = breakdown.get("drive_to_site", 0) + breakdown.get("drive_back", 0)
@@ -160,8 +166,12 @@ def evaluate_gig(gig: dict, fw: FlexWindow, driver: DriverProfile, est: RouteEst
                          net_profit=net, net_per_hour=net_per_hour, costs=costs, score=score, **base)
 
 
+def is_posted(gig: dict, now: datetime) -> bool:
+    return not gig.get("posted_at") or datetime.fromisoformat(gig["posted_at"]) <= now
+
+
 def match(gigs: list[dict], fw: FlexWindow, driver: DriverProfile, est: RouteEstimator,
-          taken: set[str] | None = None) -> dict:
+          taken: set[str] | None = None, delay_for=None) -> dict:
     if not fw.wants_work:
         return {"mode": "rest", "recommended": [], "excluded": [],
                 "message": "일감 추천을 껐어요. 주차·휴식·생활정보만 안내할게요."}
@@ -171,9 +181,9 @@ def match(gigs: list[dict], fw: FlexWindow, driver: DriverProfile, est: RouteEst
     taken = taken or set()
     recs, excl = [], []
     for g in gigs:
-        if g["id"] in taken:
+        if g["id"] in taken or not is_posted(g, fw.now):
             continue
-        ev = evaluate_gig(g, fw, driver, est)
+        ev = evaluate_gig(g, fw, driver, est, delay_for(g) if delay_for else 0)
         (recs if ev.eligible else excl).append(ev.to_dict())
     recs.sort(key=lambda e: e["score"], reverse=True)
     message = (f"조건에 맞는 일감이 {len(recs)}건 있어요." if recs

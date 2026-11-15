@@ -59,6 +59,9 @@ class Store:
         self.parking_lots = load("parking_lots.json", "lots")
         self.gigs = load("gigs.json", "gigs")
         self.places = load("places.json", "places")
+        self.live_feed = load("live_feed.json", "incidents")
+        self.manual_incidents: list[dict] = []   # 시연 도구에서 만든 상황
+        self.enforcement = load("enforcement.json", "zones")
 
     # --- audit ---
     def log(self, session_id: str | None, event: str, **detail: Any) -> None:
