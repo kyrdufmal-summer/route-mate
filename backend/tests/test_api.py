@@ -100,19 +100,20 @@ class ApiScenarioTest(unittest.TestCase):
         sid = new_session()
         accept(sid)
         r = m.vehicle_event(sid, m.EventIn(type="traffic_delay", delay_min=30, now=datetime(2026, 11, 15, 17, 30)))
-        self.assertIn("지연 안내", r["guidance"][0])
+        self.assertIn("지연을 알리고", r["guidance"][0])
 
     def test_traffic_delay_ok_when_on_time(self):
         sid = new_session()
         accept(sid)
         r = m.vehicle_event(sid, m.EventIn(type="traffic_delay", delay_min=2, now=NOW))
-        self.assertIn("복귀 가능", r["guidance"][0])
+        self.assertIn("돌아올 수 있어요", r["guidance"][0])
 
     def test_parking_full_gives_legal_alternatives(self):
         sid = new_session()
         r = m.vehicle_event(sid, m.EventIn(type="parking_full", now=NOW))
         self.assertTrue(r["alternatives"])
         self.assertTrue(all(x["pickup_zone_legal"] for x in r["alternatives"]))
+        self.assertNotIn("P-B", [x["id"] for x in r["alternatives"]])  # 꽉 찬 복귀 주차장은 대안에서 제외
 
     def test_consent_required_and_delete(self):
         with self.assertRaises(HTTPException):
@@ -125,6 +126,20 @@ class ApiScenarioTest(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 404)
         self.assertNotIn("G-101", m.store.gig_owner)
         self.assertFalse(any("position" in e for e in m.store.audit if e.get("session") == sid))
+
+    def test_declined_gig_not_recommended_again(self):
+        sid = new_session()
+        m.decline(sid, m.DeclineIn(gig_id="G-101"))
+        self.assertNotIn("G-101", [g["gig_id"] for g in m.recommendations(sid, now=NOW)["recommended"]])
+        other = new_session()  # 다른 사용자에게는 영향 없음
+        self.assertIn("G-101", [g["gig_id"] for g in m.recommendations(other, now=NOW)["recommended"]])
+
+    def test_invalid_transition_message_korean(self):
+        sid = new_session()
+        accept(sid)
+        with self.assertRaises(HTTPException) as cm:
+            m.assignment_action(sid, "complete")
+        self.assertEqual(cm.exception.detail, "'수락' 상태에서는 '완료' 처리를 할 수 없어요.")
 
     def test_rejects_past_return_time(self):
         with self.assertRaises(HTTPException):

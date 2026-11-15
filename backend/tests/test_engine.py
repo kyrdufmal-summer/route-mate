@@ -66,7 +66,7 @@ class ParkingFilterTest(unittest.TestCase):
         q = ParkingQuery(**{**self.q.__dict__, "has_academy_receipt": True})
         b = next(x for x in evaluate_lots(load("parking_lots.json", "lots"), q, EST)["recommended"] if x["id"] == "P-B")
         self.assertEqual(b["fee_estimate"], b["fee_without_discount"])
-        self.assertEqual(b["discounts_need_check"], ["건물 내 학원 영수증 1시간 무료"])
+        self.assertEqual(b["discounts_need_check"], ["같은 건물 학원 영수증 제시 시 1시간 무료"])
         self.assertEqual(b["fee_if_pending_discount_confirmed"], 0)
 
 
@@ -84,12 +84,12 @@ class FlexWindowTest(unittest.TestCase):
     def test_deadline_exceeded_excluded(self):
         ev = evaluate_gig(gig("G-103"), fw(), DRIVER, EST)
         self.assertFalse(ev.eligible)
-        self.assertIn("초과", ev.reasons[0])
+        self.assertIn("복귀 시각", ev.reasons[0])
 
     def test_hard_filters(self):
-        self.assertIn("필수 보험 미가입: paid_transport", evaluate_gig(gig("G-104"), fw(), DRIVER, EST).reasons)
-        self.assertIn("제휴·검증되지 않은 공급자", evaluate_gig(gig("G-105"), fw(), DRIVER, EST).reasons)
-        self.assertIn("일감 마감 시각 경과", evaluate_gig(gig("G-106"), fw(), DRIVER, EST).reasons)
+        self.assertIn("필수 보험 미가입: 유상운송 보험", evaluate_gig(gig("G-104"), fw(), DRIVER, EST).reasons)
+        self.assertIn("제휴·검증되지 않은 업체", evaluate_gig(gig("G-105"), fw(), DRIVER, EST).reasons)
+        self.assertIn("모집이 마감된 일감", evaluate_gig(gig("G-106"), fw(), DRIVER, EST).reasons)
 
     def test_no_insurance_blocks_insured_gig(self):
         ev = evaluate_gig(gig("G-101"), fw(), DriverProfile(), EST)
@@ -102,7 +102,7 @@ class FlexWindowTest(unittest.TestCase):
     def test_max_detour(self):
         ev = evaluate_gig(gig("G-101"), fw(max_drive_min=8), DRIVER, EST)
         self.assertFalse(ev.eligible)
-        self.assertIn("우회", ev.reasons[0])
+        self.assertIn("상한", ev.reasons[0])
 
     def test_user_buffer_raises_total(self):
         a = evaluate_gig(gig("G-101"), fw(min_buffer_min=5), DRIVER, EST)
@@ -114,6 +114,19 @@ class FlexWindowTest(unittest.TestCase):
         r = match(load("gigs.json", "gigs"), fw(wants_work=False), DRIVER, EST)
         self.assertEqual(r["mode"], "rest")
         self.assertEqual(r["recommended"], [])
+
+    def test_no_recommendation_after_return_time(self):
+        r = match(load("gigs.json", "gigs"), fw(now=datetime(2026, 11, 15, 17, 55)), DRIVER, EST)
+        self.assertEqual(r["mode"], "over")
+        self.assertEqual(r["recommended"], [])
+
+    def test_reasons_are_korean(self):
+        """제외 사유에 내부 코드(영문)가 그대로 노출되지 않아야 한다."""
+        import re
+        r = match(load("gigs.json", "gigs"), fw(), DriverProfile(qualifications=[]), EST)
+        for g in r["excluded"]:
+            for reason in g["reasons"]:
+                self.assertIsNone(re.search(r"[a-z_]{3,}", reason), reason)
 
     def test_match_sorted_and_taken_excluded(self):
         gigs = load("gigs.json", "gigs")
@@ -132,8 +145,8 @@ class FlexWindowTest(unittest.TestCase):
 class RadarTest(unittest.TestCase):
     def test_only_selected_keywords_and_ads_separated(self):
         places = load("places.json", "places")
-        r = radar(places, ["약국", "아이동반식당"], LOT_B, NOW, datetime(2026, 11, 15, 17, 55), EST)
-        self.assertTrue(all(set(p["keywords"]) <= {"약국", "아이동반식당"} for p in r["organic"] + r["sponsored"]))
+        r = radar(places, ["약국", "아이 동반 식당"], LOT_B, NOW, datetime(2026, 11, 15, 17, 55), EST)
+        self.assertTrue(all(set(p["keywords"]) <= {"약국", "아이 동반 식당"} for p in r["organic"] + r["sponsored"]))
         self.assertEqual([p["id"] for p in r["sponsored"]], ["R-3"])
         self.assertNotIn("R-5", [p["id"] for p in r["organic"]])  # 도보 10분 초과
 
@@ -150,6 +163,9 @@ class IntentTest(unittest.TestCase):
     def test_korean_clock_afternoon(self):
         self.assertEqual(parse("5시 55분까지 여기 돌아와야 해", NOW).return_by, "17:55")
         self.assertEqual(parse("오후 6시까지", datetime(2026, 11, 15, 9, 0)).return_by, "18:00")
+
+    def test_spaced_keywords(self):
+        self.assertEqual(parse("아이동반식당이랑 주차 편한 상점 알려줘", NOW).keywords, ["아이 동반 식당", "주차 편한 상점"])
 
     def test_rest_only(self):
         r = parse("오늘은 쉬고싶어요", NOW)

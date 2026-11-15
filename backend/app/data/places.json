@@ -1,10 +1,10 @@
 {
-  "_notice": "ROUTE RADAR 시연용 가상 생활정보입니다. 실제 상호가 아닙니다.",
+  "_notice": "시연용 가상 생활정보입니다. 실제 상호가 아닙니다.",
   "places": [
     { "id": "R-1", "name": "샘플 반찬가게", "keywords": ["반찬가게"], "lat": 37.50070, "lng": 127.06420, "open": "09:00", "close": "20:00", "sponsored": false, "source": "사용자 제보·운영자 확인(샘플)", "updated_at": "2026-11-10T10:00:00" },
     { "id": "R-2", "name": "샘플 온누리약국", "keywords": ["약국"], "lat": 37.49990, "lng": 127.06200, "open": "09:00", "close": "21:00", "sponsored": false, "source": "공공 약국 정보(샘플)", "updated_at": "2026-11-12T10:00:00" },
-    { "id": "R-3", "name": "샘플 키즈존 국수집", "keywords": ["아이동반식당"], "lat": 37.50020, "lng": 127.06390, "open": "11:00", "close": "21:00", "sponsored": true, "source": "제휴 광고(샘플)", "updated_at": "2026-11-15T08:00:00" },
-    { "id": "R-4", "name": "샘플 동네서점 (전용주차 2면)", "keywords": ["주차편한상점"], "lat": 37.49900, "lng": 127.06350, "open": "10:00", "close": "18:00", "sponsored": false, "source": "매장 직접 등록(샘플)", "updated_at": "2026-11-05T10:00:00" },
+    { "id": "R-3", "name": "샘플 아이 동반 국수집", "keywords": ["아이 동반 식당"], "lat": 37.50020, "lng": 127.06390, "open": "11:00", "close": "21:00", "sponsored": true, "source": "제휴 광고(샘플)", "updated_at": "2026-11-15T08:00:00" },
+    { "id": "R-4", "name": "샘플 동네서점 (전용 주차 2면)", "keywords": ["주차 편한 상점"], "lat": 37.49900, "lng": 127.06350, "open": "10:00", "close": "18:00", "sponsored": false, "source": "매장 직접 등록(샘플)", "updated_at": "2026-11-05T10:00:00" },
     { "id": "R-5", "name": "샘플 24시 약국", "keywords": ["약국"], "lat": 37.50600, "lng": 127.07400, "open": "00:00", "close": "24:00", "sponsored": false, "source": "공공 약국 정보(샘플)", "updated_at": "2026-11-12T10:00:00" },
     { "id": "R-6", "name": "샘플 쉼터 카페", "keywords": ["휴식", "카페"], "lat": 37.49950, "lng": 127.06300, "open": "08:00", "close": "22:00", "sponsored": false, "source": "사용자 제보·운영자 확인(샘플)", "updated_at": "2026-11-14T10:00:00" }
   ]

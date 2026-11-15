@@ -24,7 +24,7 @@ class ParsedIntent:
     needs_confirmation: bool = True
 
 
-KEYWORDS = ["아이동반식당", "반찬가게", "약국", "주차편한상점", "카페", "휴식"]
+KEYWORDS = ["아이 동반 식당", "반찬가게", "약국", "주차 편한 상점", "카페", "휴식"]
 
 TIME_RE = re.compile(r"(오전|오후)?\s*(\d{1,2})\s*(?:[:시]\s*(\d{1,2})?\s*분?|시)")
 
@@ -65,7 +65,7 @@ def parse(utterance: str, now: datetime | None = None) -> ParsedIntent:
         out.max_drive_min = int(d.group(1))
         hits += 1
 
-    out.keywords = [k for k in KEYWORDS if k in text]
+    out.keywords = [k for k in KEYWORDS if k.replace(" ", "") in text]
     hits += bool(out.keywords)
     out.confidence = min(1.0, hits / 3)
     return out

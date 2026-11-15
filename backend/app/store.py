@@ -21,6 +21,8 @@ TRANSITIONS = {
     "accepted": {"in_progress", "cancelled"},
     "in_progress": {"completed", "cancelled"},
 }
+STATE_KO = {"offered": "제안", "accepted": "수락", "in_progress": "진행 중", "completed": "완료",
+            "cancelled": "취소", "declined": "거절", "expired": "만료"}
 
 
 def load(name: str, key: str) -> list[dict]:
@@ -120,7 +122,7 @@ class Store:
                 raise ConflictError("진행 중인 업무가 없어요.")
             cur = s.assignment["state"]
             if new_state not in TRANSITIONS.get(cur, set()):
-                raise ConflictError(f"'{cur}' 상태에서 '{new_state}' 로 변경할 수 없어요.")
+                raise ConflictError(f"'{STATE_KO.get(cur, cur)}' 상태에서는 '{STATE_KO.get(new_state, new_state)}' 처리를 할 수 없어요.")
             s.assignment["state"] = new_state
             if new_state == "completed":
                 self.closed_gigs.add(s.assignment["gig_id"])   # 완료된 일감은 재추천하지 않음

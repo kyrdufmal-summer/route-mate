@@ -28,6 +28,8 @@ class DriverProfile:
 
 
 CARGO_RANK = {"none": 0, "small": 1, "large": 2}
+QUALIFICATION_KO = {"driver_license": "운전면허"}
+INSURANCE_KO = {"gig_delivery": "배달 업무 보험", "paid_transport": "유상운송 보험"}
 
 
 @dataclass
@@ -69,27 +71,28 @@ def hard_filters(gig: dict, fw: FlexWindow, driver: DriverProfile) -> list[str]:
     """(A) 하나라도 걸리면 추천하지 않는다. 사용자에게 사유를 투명하게 보여준다."""
     reasons: list[str] = []
     if not gig.get("partner_verified"):
-        reasons.append("제휴·검증되지 않은 공급자")
+        reasons.append("제휴·검증되지 않은 업체")
     if not gig.get("legal_reviewed"):
-        reasons.append("법적 적합성 검토 미완료")
+        reasons.append("법률 검토가 끝나지 않은 일감")
     if datetime.fromisoformat(gig["expires_at"]) <= fw.now:
-        reasons.append("일감 마감 시각 경과")
+        reasons.append("모집이 마감된 일감")
     missing = [q for q in gig.get("required_qualifications", []) if q not in driver.qualifications]
     if missing:
-        reasons.append(f"필요 자격 미보유: {', '.join(missing)}")
+        reasons.append(f"필요한 자격 없음: {', '.join(QUALIFICATION_KO.get(q, q) for q in missing)}")
     ins = gig.get("requires_insurance")
     if ins:
+        ins_ko = INSURANCE_KO.get(ins, ins)
         until = driver.insurance.get(ins)
         if not until:
-            reasons.append(f"필수 보험 미가입: {ins}")
+            reasons.append(f"필수 보험 미가입: {ins_ko}")
         elif datetime.fromisoformat(until) < fw.return_by:
-            reasons.append(f"보험({ins}) 만료가 업무 종료 전")
+            reasons.append(f"{ins_ko}이 업무 도중 만료됨")
     if CARGO_RANK.get(gig.get("cargo", "none"), 0) > CARGO_RANK.get(driver.cargo_capacity, 0):
-        reasons.append("차량 적재 조건 불충족")
+        reasons.append("차량에 실을 수 없는 짐")
     if not gig.get("on_foot") and not gig.get("parking_at_site", {}).get("available"):
-        reasons.append("업무지 합법 정차/주차 공간 미확인")
+        reasons.append("업무지에 합법적으로 세울 곳이 확인되지 않음")
     if fw.categories and gig.get("category") not in fw.categories:
-        reasons.append("희망 업무 유형 아님")
+        reasons.append("원하는 업무 유형이 아님")
     return reasons
 
 
@@ -131,13 +134,13 @@ def evaluate_gig(gig: dict, fw: FlexWindow, driver: DriverProfile, est: RouteEst
     # (C) 복귀 마감 초과 → 제외
     if finish > fw.return_by:
         return GigEvaluation(eligible=False, breakdown=breakdown, finish_at=fmt(finish), slack_min=slack,
-                             reasons=[f"복귀 마감 {fmt(fw.return_by)} 초과 (예상 {fmt(finish)})"], **base)
+                             reasons=[f"{fmt(finish)}에 돌아오게 되어 복귀 시각({fmt(fw.return_by)})을 넘김"], **base)
     if datetime.fromisoformat(gig["expires_at"]) < fw.now + timedelta(minutes=breakdown["total"] - breakdown["safety_buffer"]):
-        return GigEvaluation(eligible=False, breakdown=breakdown, reasons=["일감 마감 전 완료 불가"], **base)
+        return GigEvaluation(eligible=False, breakdown=breakdown, reasons=["모집 마감 전에 끝낼 수 없음"], **base)
     drive_total = breakdown.get("drive_to_site", 0) + breakdown.get("drive_back", 0)
     if fw.max_drive_min is not None and drive_total > fw.max_drive_min:
         return GigEvaluation(eligible=False, breakdown=breakdown,
-                             reasons=[f"우회 운전 {drive_total}분 > 허용 {fw.max_drive_min}분"], **base)
+                             reasons=[f"운전 {drive_total}분으로 설정한 상한({fw.max_drive_min}분)을 넘김"], **base)
 
     costs = {
         "vehicle": int(round(km * COST_PER_KM, -1)),
@@ -145,7 +148,7 @@ def evaluate_gig(gig: dict, fw: FlexWindow, driver: DriverProfile, est: RouteEst
     }
     net = gig["pay"] - sum(costs.values())
     work_min = breakdown["total"] - breakdown["safety_buffer"]
-    net_per_hour = int(net / work_min * 60) if work_min > 0 else 0
+    net_per_hour = int(round(net / work_min * 60, -1)) if work_min > 0 else 0
     # (D) 우회(짧을수록) · 순수익 · 신뢰도 가중 점수
     score = round(
         0.45 * min(net_per_hour / 40000, 1.0)
@@ -161,7 +164,10 @@ def match(gigs: list[dict], fw: FlexWindow, driver: DriverProfile, est: RouteEst
           taken: set[str] | None = None) -> dict:
     if not fw.wants_work:
         return {"mode": "rest", "recommended": [], "excluded": [],
-                "message": "일감 추천을 끄셨어요. 주차·휴식·생활편의 안내만 제공합니다."}
+                "message": "일감 추천을 껐어요. 주차·휴식·생활정보만 안내할게요."}
+    if fw.now >= fw.return_by:
+        return {"mode": "over", "recommended": [], "excluded": [],
+                "message": "복귀 시각이 됐어요. 새 일감은 추천하지 않아요."}
     taken = taken or set()
     recs, excl = [], []
     for g in gigs:
@@ -170,7 +176,7 @@ def match(gigs: list[dict], fw: FlexWindow, driver: DriverProfile, est: RouteEst
         ev = evaluate_gig(g, fw, driver, est)
         (recs if ev.eligible else excl).append(ev.to_dict())
     recs.sort(key=lambda e: e["score"], reverse=True)
-    message = (f"조건에 맞는 일감 {len(recs)}건" if recs
+    message = (f"조건에 맞는 일감이 {len(recs)}건 있어요." if recs
                else "지금은 조건에 맞는 일감이 없어요. 잠시 쉬시거나 근처 생활정보를 확인해 보세요.")
     return {"mode": "work", "recommended": recs, "excluded": excl, "message": message,
             "window": {"now": fmt(fw.now), "return_by": fmt(fw.return_by),

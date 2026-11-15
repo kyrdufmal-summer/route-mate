@@ -7,7 +7,7 @@
       "operator_type": "public",
       "lat": 37.49930,
       "lng": 127.06280,
-      "entrance": "학원가 이면도로 쪽 진입 (우회전 진입)",
+      "entrance": "학원가 뒷길에서 우회전해 진입",
       "open": "07:00",
       "close": "23:00",
       "height_limit_m": 2.1,
@@ -18,28 +18,28 @@
       "realtime_spaces": null,
       "valet": null,
       "pickup_zone_legal": true,
-      "source": "공공 주차시설 데이터(샘플 값)",
+      "source": "공공 주차시설 데이터(샘플)",
       "updated_at": "2026-11-15T09:00:00"
     },
     {
       "id": "P-B",
-      "name": "샘플 민영주차장 B (빌딩 지하)",
+      "name": "샘플 민영주차장 B (건물 지하)",
       "operator_type": "private",
       "lat": 37.49975,
       "lng": 127.06350,
-      "entrance": "빌딩 후면 램프",
+      "entrance": "건물 뒤편 경사로",
       "open": "06:00",
       "close": "24:00",
       "height_limit_m": 2.3,
       "fee": { "free_min": 10, "base_min": 30, "base_fee": 3000, "unit_min": 10, "unit_fee": 1000, "daily_max": 30000 },
       "discounts": [
-        { "name": "건물 내 학원 영수증 1시간 무료", "free_min": 60, "condition": "academy_receipt", "verified": false }
+        { "name": "같은 건물 학원 영수증 제시 시 1시간 무료", "free_min": 60, "condition": "academy_receipt", "verified": false }
       ],
       "realtime_spaces": 14,
       "realtime_spaces_updated_at": "2026-11-15T17:18:00",
       "valet": null,
       "pickup_zone_legal": true,
-      "source": "제휴 운영사 피드(샘플 값)",
+      "source": "제휴 운영사 제공 정보(샘플)",
       "updated_at": "2026-11-15T17:18:00"
     },
     {
@@ -48,7 +48,7 @@
       "operator_type": "public",
       "lat": 37.49860,
       "lng": 127.06150,
-      "entrance": "대로변 진입",
+      "entrance": "큰길에서 바로 진입",
       "open": "08:00",
       "close": "18:00",
       "height_limit_m": 2.1,
@@ -57,7 +57,7 @@
       "realtime_spaces": null,
       "valet": null,
       "pickup_zone_legal": true,
-      "source": "공공 주차시설 데이터(샘플 값)",
+      "source": "공공 주차시설 데이터(샘플)",
       "updated_at": "2026-11-14T09:00:00"
     },
     {
@@ -66,7 +66,7 @@
       "operator_type": "private",
       "lat": 37.50040,
       "lng": 127.06300,
-      "entrance": "골목 안 기계식 입구",
+      "entrance": "골목 안쪽 기계식 입구",
       "open": "00:00",
       "close": "24:00",
       "height_limit_m": 1.85,
@@ -75,7 +75,7 @@
       "realtime_spaces": null,
       "valet": null,
       "pickup_zone_legal": false,
-      "source": "운영사 홈페이지 수기 확인(샘플 값)",
+      "source": "운영사 홈페이지 수기 확인(샘플)",
       "updated_at": "2026-11-01T12:00:00"
     }
   ]

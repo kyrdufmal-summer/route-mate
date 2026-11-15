@@ -1,9 +1,9 @@
 {
-  "_notice": "SAMPLE — 제휴가 확보되지 않은 MVP 시연용 가상 일감입니다. 실제 매장·일감·보수가 아닙니다.",
+  "_notice": "시연용 가상 일감입니다. 제휴 전 시제품이라 실제 매장·일감·보수가 아닙니다.",
   "gigs": [
     {
       "id": "G-101",
-      "title": "[샘플] 꽃집 소형 꽃다발 픽업·인근 전달",
+      "title": "[샘플] 꽃집 꽃다발을 받아 근처에 전달",
       "category": "small_delivery",
       "partner": "샘플 제휴 꽃집",
       "partner_verified": true,
@@ -76,7 +76,7 @@
     },
     {
       "id": "G-105",
-      "title": "[샘플] 출처 미확인 급구 배달",
+      "title": "[샘플] 출처를 알 수 없는 급한 배달",
       "category": "small_delivery",
       "partner": "미확인 게시자",
       "partner_verified": false,
@@ -94,7 +94,7 @@
     },
     {
       "id": "G-106",
-      "title": "[샘플] 세탁소 수거물 전달 (마감 지난 일감)",
+      "title": "[샘플] 세탁물 전달 (모집 마감)",
       "category": "small_delivery",
       "partner": "샘플 제휴 세탁소",
       "partner_verified": true,

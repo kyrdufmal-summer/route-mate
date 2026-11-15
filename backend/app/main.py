@@ -26,7 +26,7 @@ from .store import ConflictError, Store
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 DEMO_NOW = "2026-11-15T17:20:00"
 
-app = FastAPI(title="ROUTE MATE — FLEX WINDOW API", version="0.1.0")
+app = FastAPI(title="ROUTE MATE API", version="0.1.0")
 store = Store()
 
 
@@ -108,7 +108,7 @@ def _session_or_404(sid: str):
     try:
         return store.get(sid)
     except KeyError:
-        raise HTTPException(404, "세션이 없거나 삭제되었어요.")
+        raise HTTPException(404, "이용 기록이 없거나 이미 삭제됐어요.")
 
 
 def _estimator(s) -> HeuristicEstimator:
@@ -136,7 +136,7 @@ def _driver(s) -> DriverProfile:
 # ---------- API ----------
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": app.version, "data": "SAMPLE (가상 시연 데이터)"}
+    return {"ok": True, "version": app.version, "data": "샘플(가상 시연 데이터)"}
 
 
 @app.get("/api/demo/scenario")
@@ -145,7 +145,7 @@ def demo_scenario():
     return {
         "now": DEMO_NOW,
         "vehicle_position": {"lat": 37.49880, "lng": 127.06230},
-        "destination": {"lat": 37.49985, "lng": 127.06330, "label": "목적지(사용자 지정 좌표)"},
+        "destination": {"lat": 37.49985, "lng": 127.06330, "label": "목적지"},
         "pickup_end": "2026-11-15T18:10:00",
         "vehicle": {"height_m": 1.98, "compact": False},
         "driver": {"qualifications": ["driver_license"],
@@ -172,10 +172,10 @@ def parse_intent(body: IntentIn):
 @app.post("/api/sessions", status_code=201)
 def create_session(body: SessionIn):
     if not body.consent_location:
-        raise HTTPException(400, "위치 이용 동의가 필요해요. 동의하지 않으면 주차 안내만 수동 검색으로 이용할 수 있어요.")
+        raise HTTPException(400, "위치 정보 이용에 동의해야 여유 시간 계획을 쓸 수 있어요. 동의하지 않아도 주차장 비교는 이용할 수 있어요.")
     now = _now(body.now)
     if body.return_by <= now:
-        raise HTTPException(422, "복귀 시각은 현재 이후여야 해요.")
+        raise HTTPException(422, "복귀 시각은 지금보다 늦어야 해요.")
     data = body.model_dump(mode="json")
     data["now"] = now.isoformat()
     data["return_by"] = body.return_by.isoformat()
@@ -195,16 +195,17 @@ def recommendations(sid: str, now: datetime | None = None, gear: str = "P", spee
 
     if s.recommendations_paused:
         result = {"mode": "paused", "recommended": [], "excluded": [],
-                  "message": f"추가 추천을 멈췄어요: {s.pause_reason}. 안전한 복귀를 우선합니다."}
+                  "message": f"새 일감 추천을 멈췄어요({s.pause_reason}). 안전하게 돌아오는 길을 먼저 안내할게요."}
     elif s.assignment and s.assignment["state"] in ("accepted", "in_progress"):
         result = {"mode": "assigned", "recommended": [], "excluded": [], "message": "진행 중인 업무가 있어요."}
     else:
-        result = match(store.gigs, fw, _driver(s), est, taken=store.taken_gigs(except_session=sid))
+        hidden = store.taken_gigs(except_session=sid) | set(s.data.get("declined", []))
+        result = match(store.gigs, fw, _driver(s), est, taken=hidden)
 
     if not vs.stationary:
         # 주행 중: 상세 목록 대신 짧은 음성 브리핑만
         n = len(result["recommended"])
-        msg = f"조건 맞는 일감 {n}건. 정차 후 확인하세요." if n else "지금은 맞는 일감이 없어요."
+        msg = f"조건에 맞는 일감이 {n}건 있어요. 차를 세운 뒤 확인하세요." if n else "지금은 조건에 맞는 일감이 없어요."
         return {"driving": True, "voice_brief": brief_for_driving(msg), "count": n}
 
     return {"driving": False, **result, "radar": rad, "assignment": s.assignment,
@@ -215,11 +216,11 @@ def recommendations(sid: str, now: datetime | None = None, gear: str = "P", spee
 def accept(sid: str, body: AcceptIn, idempotency_key: str = Header(..., alias="Idempotency-Key")):
     s = _session_or_404(sid)
     try:
-        require_parked(body.vehicle_state.v(), "일감 수락")
+        require_parked(body.vehicle_state.v(), "일감을 수락할")
     except DrivingLockError as e:
         raise HTTPException(423, str(e))
     if s.recommendations_paused:
-        raise HTTPException(409, f"추천이 중지된 상태예요: {s.pause_reason}")
+        raise HTTPException(409, f"지금은 추천을 멈춘 상태예요({s.pause_reason}).")
     gig = next((g for g in store.gigs if g["id"] == body.gig_id), None)
     if not gig:
         raise HTTPException(404, "일감을 찾을 수 없어요.")
@@ -228,7 +229,7 @@ def accept(sid: str, body: AcceptIn, idempotency_key: str = Header(..., alias="I
     # 수락 시점에 조건을 다시 검증 (그 사이 시간이 흘렀거나 보험·마감이 바뀌었을 수 있음)
     ev = evaluate_gig(gig, fw, _driver(s), _estimator(s)).to_dict()
     if not ev["eligible"]:
-        raise HTTPException(409, {"message": "지금은 조건을 만족하지 않아요.", "reasons": ev["reasons"]})
+        raise HTTPException(409, {"message": "지금은 이 일감의 조건을 충족하지 않아요.", "reasons": ev["reasons"]})
     try:
         res = store.accept(sid, gig["id"], idempotency_key, ev)
     except ConflictError as e:
@@ -236,14 +237,30 @@ def accept(sid: str, body: AcceptIn, idempotency_key: str = Header(..., alias="I
     bd = ev["breakdown"]
     go = bd.get("drive_to_site", bd.get("walk_to_site", 0))
     res["navigation"] = {
-        "provider": "NaviHelper SDK (MVP: 추정 경로)",
+        "provider": "내비게이션 연동 예정(현재는 추정 경로)",
         "waypoints": [
             {"label": "업무지", "lat": gig["lat"], "lng": gig["lng"], "eta": fmt(now + timedelta(minutes=go))},
-            {"label": "복귀 기준점", **(s.data["return_point"] or s.data["position"]), "eta": ev["finish_at"]},
+            {"label": "복귀 지점", **(s.data["return_point"] or s.data["position"]), "eta": ev["finish_at"]},
         ],
         "return_by": fmt(fw.return_by),
     }
     return res
+
+
+class DeclineIn(BaseModel):
+    gig_id: str
+
+
+@app.post("/api/sessions/{sid}/decline")
+def decline(sid: str, body: DeclineIn):
+    """거절한 일감은 이 세션에서 다시 추천하지 않는다. 거절은 불이익 없이 기록만 남긴다."""
+    s = _session_or_404(sid)
+    with store.lock:
+        declined = s.data.setdefault("declined", [])
+        if body.gig_id not in declined:
+            declined.append(body.gig_id)
+    store.log(sid, "gig_declined", gig_id=body.gig_id)
+    return {"declined": declined}
 
 
 @app.post("/api/sessions/{sid}/assignment/{action}")
@@ -267,16 +284,16 @@ def vehicle_event(sid: str, body: EventIn):
         s.recommendations_paused = True
         if body.type == "traffic_delay":
             s.data["traffic_multiplier"] = 1.0 + max(body.delay_min, 0) / 10
-            s.pause_reason = f"교통 악화(+{body.delay_min}분)"
+            s.pause_reason = f"교통 정체로 {body.delay_min}분 지연"
         elif body.type == "gig_cancelled":
             s.pause_reason = "업무 취소"
         else:
-            s.pause_reason = "복귀 주차장 만차"
+            s.pause_reason = "복귀할 주차장 만차"
     a = s.assignment
     active = a and a["state"] in ("accepted", "in_progress")
     if body.type == "gig_cancelled" and active:
         store.transition(sid, "cancelled", reason="partner_cancelled")
-        guidance.append("업무가 취소되었어요. 복귀 기준점으로 안내합니다.")
+        guidance.append("업무가 취소됐어요. 복귀 지점으로 안내할게요.")
     elif body.type == "traffic_delay" and active:
         bd = a["evaluation"]["breakdown"]
         m = s.data["traffic_multiplier"]
@@ -289,17 +306,19 @@ def vehicle_event(sid: str, body: EventIn):
             remaining += math.ceil(go * scale)
         eta = now + timedelta(minutes=remaining)
         if eta > fw.return_by:
-            guidance.append(f"복귀 예상 {fmt(eta)} 로 마감 {fmt(fw.return_by)} 을 넘어요. 제휴처에 지연 안내를 보내고 즉시 복귀하세요.")
+            guidance.append(f"약속한 {fmt(fw.return_by)}보다 늦은 {fmt(eta)}쯤 돌아오게 돼요. 업체에 지연을 알리고 바로 돌아가세요.")
         else:
-            guidance.append(f"지연을 반영해도 {fmt(eta)} 복귀 가능해요. 업무 마무리 후 바로 복귀하세요.")
+            guidance.append(f"지연을 반영해도 {fmt(eta)}쯤 돌아올 수 있어요. 업무를 마치면 바로 복귀하세요.")
     elif body.type == "parking_full":
         q = ParkingQuery(origin=fw.return_point, destination=fw.return_point, now=now,
                          stay_until=fw.return_by + timedelta(minutes=15), pickup_only=True)
-        alts = evaluate_lots(store.parking_lots, q, HeuristicEstimator())["recommended"][:2]
-        guidance.append("복귀 주차장이 만차예요. 합법 승하차 가능한 대체 장소를 안내합니다.")
+        rp = fw.return_point
+        others = [lot for lot in store.parking_lots if (lot["lat"], lot["lng"]) != (rp.lat, rp.lng)]  # 꽉 찬 곳 제외
+        alts = evaluate_lots(others, q, HeuristicEstimator())["recommended"][:2]
+        guidance.append("복귀할 주차장이 꽉 찼어요. 합법적으로 타고 내릴 수 있는 다른 곳을 안내할게요.")
         return {"paused": True, "reason": s.pause_reason, "guidance": guidance, "alternatives": alts}
     else:
-        guidance.append("추가 일감 추천을 멈추고 복귀를 우선합니다.")
+        guidance.append("새 일감 추천을 멈췄어요. 안전하게 돌아오는 길을 먼저 안내할게요.")
     store.log(sid, "vehicle_event", type=body.type, delay_min=body.delay_min)
     return {"paused": True, "reason": s.pause_reason, "guidance": guidance, "assignment": s.assignment}
 

@@ -27,7 +27,7 @@ class DrivingLockError(Exception):
 
 def require_parked(state: VehicleState, action: str) -> None:
     if not state.parked:
-        raise DrivingLockError(f"주행 중에는 '{action}' 을(를) 할 수 없어요. 정차(P) 후 다시 시도해 주세요.")
+        raise DrivingLockError(f"주행 중에는 {action} 수 없어요. 차를 세우고(P단) 다시 시도해 주세요.")
 
 
 def brief_for_driving(text: str, limit: int = 40) -> str:

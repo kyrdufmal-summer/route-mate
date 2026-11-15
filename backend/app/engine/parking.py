@@ -38,12 +38,12 @@ def base_fee(fee: dict[str, int], stay_min: int, extra_free_min: int = 0) -> int
 
 def _field_status(value: Any, updated_at: str | None, now: datetime) -> dict[str, Any]:
     if value is None:
-        return {"value": None, "status": "미확인", "label": "확인 불가 — 현장 확인 필요"}
+        return {"value": None, "status": "미확인", "label": "미확인(현장 확인 필요)"}
     status = "확인됨"
     if updated_at:
         age_h = (now - datetime.fromisoformat(updated_at)).total_seconds() / 3600
         if age_h > STALE_HOURS:
-            status = "갱신 지연"
+            status = "오래된 정보"
     return {"value": value, "status": status, "updated_at": updated_at}
 
 
@@ -68,13 +68,13 @@ def evaluate_lots(lots: list[dict], q: ParkingQuery, est: RouteEstimator) -> dic
         drive_km, drive_min = est.drive(q.origin, here)
         arrive = q.now  # 비교 기준은 현재 시각 (진입 소요는 별도 표시)
         if not is_open_through(q.now, lot["open"], lot["close"], arrive, q.stay_until):
-            reasons.append(f"운영시간 {lot['open']}~{lot['close']} 이 체류 종료 {fmt(q.stay_until)} 을 덮지 못함")
+            reasons.append(f"운영 시간({lot['open']}~{lot['close']})이 머무는 시간({fmt(q.now)}~{fmt(q.stay_until)})과 맞지 않음")
         if lot["height_limit_m"] < q.vehicle.height_m:
-            reasons.append(f"높이 제한 {lot['height_limit_m']}m < 차량 {q.vehicle.height_m}m")
+            reasons.append(f"높이 제한 {lot['height_limit_m']}m라 차량({q.vehicle.height_m}m)이 들어갈 수 없음")
         if q.pickup_only and not lot.get("pickup_zone_legal"):
-            reasons.append("합법 승하차 장소로 확인되지 않음")
+            reasons.append("합법적으로 타고 내릴 수 있는 곳인지 확인되지 않음")
         if lot.get("realtime_spaces") == 0:
-            reasons.append("만차(실시간)")
+            reasons.append("실시간 정보상 만차")
         if reasons:
             excluded.append({"id": lot["id"], "name": lot["name"], "reasons": reasons})
             continue
