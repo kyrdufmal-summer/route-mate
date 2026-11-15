@@ -137,13 +137,15 @@ def _driver(s) -> DriverProfile:
     return DriverProfile(**s.data["driver"])
 
 
-def _incidents(now: datetime) -> list[dict]:
-    return sit.active_incidents(store.live_feed, store.manual_incidents, now)
+def _incidents(now: datetime, sid: str | None = None) -> list[dict]:
+    """시간표 상황 + 이 사용자가 시연 도구로 만든 상황. (다른 사람이 만든 상황은 섞이지 않는다)"""
+    mine = [i for i in store.manual_incidents if i.get("sid") in (None, sid)]
+    return sit.active_incidents(store.live_feed, mine, now)
 
 
-def _delay_for(fw: FlexWindow, now: datetime):
+def _delay_for(fw: FlexWindow, now: datetime, sid: str | None = None):
     """실시간 상황(사고·정체·비)이 이 일감의 운전 구간에 주는 지연(분)."""
-    incs = _incidents(now)
+    incs = _incidents(now, sid)
 
     def f(gig: dict) -> int:
         if gig.get("on_foot"):
@@ -221,7 +223,7 @@ def recommendations(sid: str, now: datetime | None = None, gear: str = "P", spee
         result = {"mode": "assigned", "recommended": [], "excluded": [], "message": "하고 있는 일이 있어요."}
     else:
         hidden = store.taken_gigs(except_session=sid) | set(s.data.get("declined", []))
-        result = match(store.gigs, fw, _driver(s), est, taken=hidden, delay_for=_delay_for(fw, now))
+        result = match(store.gigs, fw, _driver(s), est, taken=hidden, delay_for=_delay_for(fw, now, sid))
 
     if not vs.stationary:
         # 주행 중: 상세 목록 대신 짧은 음성 브리핑만
@@ -248,7 +250,7 @@ def accept(sid: str, body: AcceptIn, idempotency_key: str = Header(..., alias="I
     now = _now(body.now)
     fw = _fw(s, now)
     # 수락 시점에 조건을 다시 검증 (그 사이 시간이 흘렀거나 보험·마감이 바뀌었을 수 있음)
-    ev = evaluate_gig(gig, fw, _driver(s), _estimator(s), _delay_for(fw, now)(gig)).to_dict()
+    ev = evaluate_gig(gig, fw, _driver(s), _estimator(s), _delay_for(fw, now, sid)(gig)).to_dict()
     if not ev["eligible"]:
         raise HTTPException(409, {"message": "지금은 이 일을 하기 어려워요.", "reasons": ev["reasons"]})
     try:
@@ -393,7 +395,7 @@ def situation(sid: str, now: datetime | None = None, gear: str = "P", resting: b
     s = _session_or_404(sid)
     now = _now(now)
     fw = _fw(s, now)
-    incs = [i for i in _incidents(now) if i["id"] not in s.data.get("dismissed", [])]
+    incs = [i for i in _incidents(now, sid) if i["id"] not in s.data.get("dismissed", [])]
     a = s.assignment
     site = Point(a["evaluation"]["lat"], a["evaluation"]["lng"]) if a else None
 
@@ -402,7 +404,7 @@ def situation(sid: str, now: datetime | None = None, gear: str = "P", resting: b
     hidden = store.taken_gigs(except_session=sid) | set(s.data.get("declined", []))
     fresh = [g for g in store.gigs if g.get("posted_at") and is_posted(g, now)
              and datetime.fromisoformat(g["posted_at"]) > started and g["id"] not in hidden]
-    new_gigs = [r for r in match(fresh, fw, _driver(s), _estimator(s), delay_for=_delay_for(fw, now))["recommended"]] if fresh else []
+    new_gigs = [r for r in match(fresh, fw, _driver(s), _estimator(s), delay_for=_delay_for(fw, now, sid))["recommended"]] if fresh else []
 
     ctx = sit.Context(now=now, return_by=fw.return_by, position=fw.position, return_point=fw.return_point,
                       purpose=s.data.get("purpose", "pickup"), wants_work=fw.wants_work, resting=resting,
@@ -462,8 +464,9 @@ def add_incident(body: IncidentIn, sid: str | None = None):
     """시연 도구: 지금 이 순간 상황을 하나 만든다. 사고는 진행 중인 일의 경로 위(없으면 목적지 근처)에 만든다."""
     now = _now(body.now)
     n = len(store.manual_incidents) + 1
+    sid = sid if sid in store.sessions else None
     inc: dict = {"id": f"M-{n}", "type": body.type, "starts": now.isoformat(),
-                 "ends": (now + timedelta(minutes=60)).isoformat(), "source": "시연 도구"}
+                 "ends": (now + timedelta(minutes=60)).isoformat(), "source": "시연 도구", "sid": sid}
     sc = demo_scenario()
     lat, lng = sc["destination"]["lat"], sc["destination"]["lng"]
     s = store.sessions.get(sid) if sid else None
@@ -505,12 +508,12 @@ def waiting_spots(lat: float, lng: float, now: datetime | None = None):
     return {"spots": _waiting_spots(Point(lat, lng), _now(now)), "loop_min": 5}
 
 
-def _listing_trip(listing: dict, fw: FlexWindow, now: datetime) -> dict:
+def _listing_trip(listing: dict, fw: FlexWindow, now: datetime, sid: str | None = None) -> dict:
     est = HeuristicEstimator()
     site = Point(listing["lat"], listing["lng"])
     km1, go = est.drive(fw.position, site)
     km2, back = est.drive(site, fw.return_point)
-    delay = sit.route_delay(_incidents(now), [(fw.position, site), (site, fw.return_point)])[0]
+    delay = sit.route_delay(_incidents(now, sid), [(fw.position, site), (site, fw.return_point)])[0]
     total = go + listing["handover_min"] + back + delay
     return {"drive_min": go, "back_min": back, "delay_min": delay, "total_min": total,
             "arrive_at": fmt(now + timedelta(minutes=go)), "finish_at": fmt(now + timedelta(minutes=total))}
@@ -524,13 +527,14 @@ def _market_hits(s, fw: FlexWindow, now: datetime) -> list[dict]:
     cap = s.data.get("wish_max_price")
     out = []
     for item in store.listings:
-        if datetime.fromisoformat(item["posted_at"]) > now or item["id"] in s.data.get("market_done", []):
+        posted = s.data.get("listing_posted", {}).get(item["id"], item["posted_at"])  # 시연 도구로 앞당긴 경우
+        if datetime.fromisoformat(posted) > now or item["id"] in s.data.get("market_done", []):
             continue
         kw = next((w for w in wish if any(w.replace(" ", "") in k.replace(" ", "") or k.replace(" ", "") in w.replace(" ", "")
                                           for k in item["keywords"] + [item["title"]])), None)
         if not kw or (cap and item["price"] > cap):
             continue
-        trip = _listing_trip(item, fw, now)
+        trip = _listing_trip(item, fw, now, s.id)
         if now + timedelta(minutes=trip["total_min"] + max(5, fw.min_buffer_min)) > fw.return_by:
             continue  # 다녀오면 약속에 늦는 매물은 알리지 않는다
         out.append({**item, **trip, "keyword": kw})
@@ -555,7 +559,7 @@ def market_go(sid: str, listing_id: str, body: MarketGoIn):
         raise HTTPException(404, "매물을 찾을 수 없어요.")
     now = _now(body.now)
     fw = _fw(s, now)
-    trip = _listing_trip(item, fw, now)
+    trip = _listing_trip(item, fw, now, sid)
     if now + timedelta(minutes=trip["total_min"]) > fw.return_by:
         raise HTTPException(409, "지금 다녀오면 돌아올 시각에 늦어요.")
     message = f"안녕하세요, '{item['title']}' 사고 싶어요. 지금 {item['place']}{sit.josa_ro(item['place'])} 가면 {trip['arrive_at']}쯤 도착해요. 괜찮으실까요?"
@@ -585,19 +589,21 @@ def trip_action(sid: str, action: Literal["arrived", "done", "cancel"]):
 
 
 @app.post("/api/demo/listing/{listing_id}")
-def post_listing_now(listing_id: str, now: datetime | None = None):
-    """시연 도구: 이 매물을 지금 올라온 것으로 만든다."""
+def post_listing_now(listing_id: str, now: datetime | None = None, sid: str | None = None):
+    """시연 도구: 이 사용자에게만 이 매물이 지금 올라온 것으로 보이게 한다."""
     item = next((x for x in store.listings if x["id"] == listing_id), None)
     if not item:
         raise HTTPException(404, "매물을 찾을 수 없어요.")
-    item["posted_at"] = _now(now).isoformat()
-    return item
+    s = store.sessions.get(sid) if sid else None
+    if s:
+        s.data.setdefault("listing_posted", {})[listing_id] = _now(now).isoformat()
+    return {**item, "posted_at": _now(now).isoformat()}
 
 
 @app.delete("/api/demo/incidents", status_code=204)
-def clear_incidents():
-    """시연 도구: 직접 만든 상황을 모두 지운다 (처음부터 다시 할 때)."""
-    store.manual_incidents.clear()
+def clear_incidents(sid: str | None = None):
+    """시연 도구: 이 사용자가 만든 상황만 지운다 (처음부터 다시 할 때)."""
+    store.manual_incidents[:] = [i for i in store.manual_incidents if i.get("sid") not in (None, sid)]
 
 
 @app.get("/api/enforcement")

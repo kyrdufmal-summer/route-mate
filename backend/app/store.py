@@ -70,7 +70,22 @@ class Store:
                            "event": event, **detail})
 
     # --- sessions ---
+    SESSION_TTL_MIN = 90
+
+    def purge_stale(self) -> int:
+        """마지막 생성 후 90분이 지난 이용 기록은 지운다. 공개 시연 서버에서 일감이 계속 묶여 있지 않게."""
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(minutes=self.SESSION_TTL_MIN)
+        old = [sid for sid, s in self.sessions.items() if s.created_at < cutoff]
+        for sid in old:
+            self.delete_session(sid)
+        self.manual_incidents[:] = [i for i in self.manual_incidents if i.get("sid") is None or i["sid"] in self.sessions]
+        if len(self.audit) > 5000:
+            del self.audit[:-2000]
+        return len(old)
+
     def create_session(self, data: dict) -> Session:
+        self.purge_stale()
         with self.lock:
             s = Session(id=uuid.uuid4().hex[:12], created_at=datetime.now(), data=data)
             self.sessions[s.id] = s

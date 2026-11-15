@@ -584,7 +584,7 @@ function setupSettings() {
 async function restart() {
   if (S.session) { try { await api(`/api/sessions/${S.session}`, { method: "DELETE" }); } catch (_) {} }
   try { localStorage.removeItem("routemate.session"); } catch (_) {}
-  try { await api("/api/demo/incidents", { method: "DELETE" }); } catch (_) {}
+  try { await api(`/api/demo/incidents${S.session ? `?sid=${S.session}` : ""}`, { method: "DELETE" }); } catch (_) {}
   Object.assign(S, { stage: "park", lot: null, session: null, recs: null, driveBrief: null, lastAccept: null, resting: false,
     guidance: [], alternatives: [], showLotsExcluded: false, showGigsExcluded: false, now: S.scenario.now,
     plan: { returnBy: "17:55", wantsWork: true, keywords: [], buffer: 5, maxDrive: "", consent: true, heard: "", purpose: "pickup", wishlist: [] },
@@ -871,7 +871,7 @@ document.addEventListener("keydown", (e) => {
 // 시연 도구: 찾던 물건 매물 지금 올리기
 document.addEventListener("click", async (e) => {
   if (e.target.id !== "postListing") return;
-  await api(`/api/demo/listing/L-1?now=${encodeURIComponent(S.now)}`, { method: "POST" });
+  await api(`/api/demo/listing/L-1?now=${encodeURIComponent(S.now)}${S.session ? `&sid=${S.session}` : ""}`, { method: "POST" });
   if (!S.session) return say("매물을 올렸어요. 찾는 물건에 '유아 카시트'를 넣고 계획을 시작해 보세요.");
   await pollSituation();
 });

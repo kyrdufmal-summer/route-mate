@@ -175,3 +175,35 @@ class MarketAndSpotsTest(unittest.TestCase):
         spots = m.waiting_spots(lat=37.49985, lng=127.0633, now=T("17:20"))["spots"]
         self.assertTrue(spots)
         self.assertTrue(all(s["parking"] for s in spots))
+
+
+class PublicDemoIsolationTest(unittest.TestCase):
+    """공개 URL에서 여러 심사위원이 동시에 써도 서로의 시연 상황이 섞이지 않아야 한다."""
+
+    def setUp(self):
+        m.store = Store()
+
+    def test_incident_only_affects_its_creator(self):
+        a, b = session(), session()
+        m.add_incident(m.IncidentIn(type="schedule_change", now=T("17:25"), minutes=15), sid=a)
+        kinds_a = [iv["kind"] for iv in m.situation(a, now=T("17:25"))["interventions"]]
+        kinds_b = [iv["kind"] for iv in m.situation(b, now=T("17:25"))["interventions"]]
+        self.assertIn("schedule", kinds_a)
+        self.assertNotIn("schedule", kinds_b)
+        m.clear_incidents(sid=a)
+        self.assertFalse([i for i in m.store.manual_incidents if i.get("sid") == a])
+
+    def test_listing_post_is_per_session(self):
+        a = session(wishlist=["유아 카시트"])
+        b = session(wishlist=["유아 카시트"])
+        m.post_listing_now("L-1", now=T("17:22"), sid=a)
+        self.assertIn("market", [iv["kind"] for iv in m.situation(a, now=T("17:22"))["interventions"]])
+        self.assertNotIn("market", [iv["kind"] for iv in m.situation(b, now=T("17:22"))["interventions"]])
+
+    def test_stale_sessions_purged(self):
+        a = session()
+        m.accept(a, m.AcceptIn(gig_id="G-101", now=T("17:20")), idempotency_key="k")
+        m.store.sessions[a].created_at -= timedelta(minutes=120)
+        session()  # 새 이용이 시작될 때 오래된 기록 정리
+        self.assertNotIn(a, m.store.sessions)
+        self.assertNotIn("G-101", m.store.gig_owner)

@@ -1,0 +1,13 @@
+# Render 배포 설정 (https://render.com) — GitHub 저장소를 연결하면 이 파일대로 자동 배포됩니다.
+services:
+  - type: web
+    name: route-mate
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
