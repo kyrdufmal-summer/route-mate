@@ -3,115 +3,96 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ROUTE MATE — 차량 화면 시뮬레이터</title>
-<link rel="stylesheet" href="/static/style.css">
+<title>ROUTE MATE</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
-<div class="sim-banner">차량 중앙 화면 시뮬레이터 · 주차장·일감·상점 정보는 모두 <b>시연용 가상 데이터</b>입니다</div>
 
-<div class="display">
-  <header class="statusbar">
-    <div class="brand">ROUTE MATE <span>차량 생활동선 도우미</span></div>
-    <div class="clock"><span id="clock">--:--</span><button class="ghost sm" id="tick" title="시연 시각을 5분 뒤로 옮깁니다">+5분</button></div>
-    <div class="vehicle">
-      <span id="vstate" class="pill parked">정차 중 (P)</span>
-      <button class="ghost sm" id="toggleDrive">주행·정차 전환</button>
+<div class="screen" id="screen">
+  <!-- 상단 상태 표시줄 -->
+  <header class="topbar">
+    <div class="logo"><span class="logo-mark" id="logoMark"></span><span>ROUTE MATE</span></div>
+    <div class="clock" id="clock">--:--</div>
+    <div class="top-right">
+      <span class="chip countdown hidden" id="countdown"></span>
+      <span class="chip gear" id="gearChip"></span>
+      <button class="icon-btn" id="openSettings" aria-label="설정"></button>
     </div>
   </header>
 
-  <main class="body">
-    <section class="map-pane">
-      <svg id="map" viewBox="0 0 520 520" role="img" aria-label="주변 간략 지도"></svg>
-      <ul class="legend">
-        <li><i class="dot car"></i>내 차</li>
-        <li><i class="dot dest"></i>목적지</li>
-        <li><i class="dot lot"></i>주차장</li>
-        <li><i class="dot gig"></i>일감</li>
-        <li><i class="dot place"></i>생활정보</li>
-      </ul>
+  <div class="main">
+    <!-- 지도 -->
+    <section class="map-wrap">
+      <svg id="map" viewBox="0 0 520 560" role="img" aria-label="주변 지도"></svg>
+      <div class="map-caption" id="mapCaption">목적지 주변</div>
     </section>
 
-    <section class="flow-pane">
-      <nav class="steps" id="steps">
-        <button data-step="1" class="active">1 주차</button>
-        <button data-step="2">2 여유 시간</button>
-        <button data-step="3">3 추천</button>
-        <button data-step="4">4 진행</button>
-      </nav>
-
-      <div class="panel" id="panel1">
-        <h2>주차장 비교</h2>
-        <p class="sub">17:20에 도착해 18:10까지 머무는 기준의 예상 요금이에요.</p>
-        <label class="check"><input type="checkbox" id="pickupOnly" checked> 합법적으로 타고 내릴 수 있는 곳만 보기</label>
-        <label class="check"><input type="checkbox" id="receipt"> 같은 건물 학원 영수증이 있어요</label>
-        <div id="lots" class="cards"></div>
-        <details class="excluded"><summary>추천하지 않은 주차장과 이유</summary><div id="lotsExcluded"></div></details>
+    <!-- 도우미 패널 -->
+    <section class="assistant">
+      <div class="bubble" aria-live="polite">
+        <span class="avatar" id="avatar"></span>
+        <p id="bubbleText">안녕하세요. 목적지 근처 주차장을 찾고 있어요.</p>
+        <button class="icon-btn replay" id="replay" aria-label="다시 듣기"></button>
       </div>
-
-      <div class="panel hidden" id="panel2">
-        <h2>여유 시간 설정</h2>
-        <p class="sub">말로 설정해도 바로 저장되지 않아요. 아래 내용을 확인한 뒤 시작해 주세요.</p>
-        <div class="voice">
-          <input id="utter" aria-label="음성 요청" placeholder="예: 17:55까지 이곳에 돌아와야 해요. 시간이 남으면 가까운 일도 볼래요">
-          <button id="parse">🎙 말로 설정</button>
-        </div>
-        <div class="form">
-          <label>돌아올 시각 <input type="time" id="returnBy" value="17:55"></label>
-          <label>복귀 전 최소 여유(분) <input type="number" id="buffer" value="5" min="0" max="60"></label>
-          <label>운전 시간 상한(분) <input type="number" id="maxDrive" placeholder="제한 없음" min="0"></label>
-          <label class="check"><input type="checkbox" id="wantsWork" checked> 시간이 남으면 가까운 일감도 보기</label>
-          <fieldset><legend>근처에서 찾을 곳</legend>
-            <label class="check"><input type="checkbox" name="kw" value="아이 동반 식당"> 아이 동반 식당</label>
-            <label class="check"><input type="checkbox" name="kw" value="반찬가게"> 반찬가게</label>
-            <label class="check"><input type="checkbox" name="kw" value="약국"> 약국</label>
-            <label class="check"><input type="checkbox" name="kw" value="주차 편한 상점"> 주차 편한 상점</label>
-            <label class="check"><input type="checkbox" name="kw" value="카페"> 카페</label>
-          </fieldset>
-          <label class="check"><input type="checkbox" id="consent" checked> 위치 정보 이용에 동의해요 (이용이 끝나면 삭제)</label>
-        </div>
-        <button class="primary" id="startWindow">여유 시간 계획 시작</button>
-      </div>
-
-      <div class="panel hidden" id="panel3">
-        <h2>지금 할 수 있는 것</h2>
-        <p class="sub" id="recMsg">먼저 주차하고 여유 시간을 설정해 주세요.</p>
-        <div class="choice-rest">
-          <div>☕ <b>잠시 쉬기</b> — 일감을 고르지 않아도 괜찮아요. 돌아올 시각만 알려 드릴게요.</div>
-          <button class="sm" id="chooseRest">쉬기</button>
-        </div>
-        <div id="gigs" class="cards"></div>
-        <details class="excluded"><summary>추천하지 않은 일감과 이유</summary><div id="gigsExcluded"></div></details>
-        <h3>주변 생활정보</h3>
-        <div id="radar" class="cards small"></div>
-        <div id="radarAds"></div>
-      </div>
-
-      <div class="panel hidden" id="panel4">
-        <h2>진행 상황</h2>
-        <div id="assignment"></div>
-        <div class="row">
-          <button id="startTask">업무 시작</button>
-          <button id="completeTask" class="primary">업무 완료</button>
-          <button id="cancelTask" class="danger">취소하고 돌아가기</button>
-        </div>
-        <h3>상황 변화 시험</h3>
-        <div class="row">
-          <button class="ghost" data-event="traffic_delay">교통 정체 (10분 지연)</button>
-          <button class="ghost" data-event="gig_cancelled">업체가 업무 취소</button>
-          <button class="ghost" data-event="parking_full">복귀할 주차장 만차</button>
-          <button class="ghost" id="resume">추천 다시 받기</button>
-        </div>
-        <div id="guidance"></div>
-        <button class="ghost danger-text" id="deleteSession">위치 정보 동의 철회 및 기록 삭제</button>
-      </div>
+      <ol class="progress" id="progress">
+        <li data-stage="park">주차</li>
+        <li data-stage="time">시간 설정</li>
+        <li data-stage="pick">선택</li>
+        <li data-stage="go">진행</li>
+      </ol>
+      <div class="stage" id="stage"></div>
     </section>
-  </main>
+  </div>
 
-  <footer class="voicebar" id="voicebar" aria-live="polite">🔊 <span id="voiceText">안녕하세요. 먼저 주차할 곳을 찾아볼게요.</span></footer>
+  <!-- 설정 시트 -->
+  <div class="sheet-backdrop hidden" id="sheetBackdrop"></div>
+  <aside class="sheet hidden" id="settings" aria-label="설정">
+    <h3>설정</h3>
+    <div class="setting-row">
+      <div><b>음성 안내</b><small>주행 중에는 화면 대신 음성으로 알려 드려요</small></div>
+      <label class="switch"><input type="checkbox" id="voiceOn" checked><span></span></label>
+    </div>
+    <div class="setting-row col">
+      <b>목소리</b>
+      <select id="voiceSelect"></select>
+      <small id="voiceHint"></small>
+    </div>
+    <div class="setting-row col">
+      <b>말하기 속도 <span id="rateLabel">보통</span></b>
+      <input type="range" id="voiceRate" min="0.8" max="1.3" step="0.05" value="1.0">
+    </div>
+    <div class="setting-row">
+      <button class="btn ghost" id="voiceTest">미리 듣기</button>
+    </div>
+    <hr>
+    <div class="setting-row col">
+      <b>개인정보</b>
+      <small>위치 정보는 이번 이용에만 쓰고, 끝나면 지워요.</small>
+      <button class="btn danger-ghost" id="deleteSession">위치 정보 동의 철회 및 기록 삭제</button>
+    </div>
+    <button class="btn primary wide" id="closeSettings">닫기</button>
+  </aside>
 </div>
 
-<details class="audit"><summary>이용 기록 (개발자 확인용)</summary><pre id="audit"></pre></details>
+<!-- 시연 도구: 실제 차량 화면에는 없는 영역 -->
+<section class="demo-tools">
+  <div class="demo-head"><b>시연 도구</b><span>실제 차량 화면에는 없는 영역이에요 · 주차장·일감·상점 정보는 모두 가상 데이터</span></div>
+  <div class="demo-row">
+    <button id="tick">시각 +5분</button>
+    <button id="toggleDrive">주행 ↔ 정차</button>
+    <span class="sep"></span>
+    <button data-event="traffic_delay">교통 정체 (10분 지연)</button>
+    <button data-event="gig_cancelled">업체가 업무 취소</button>
+    <button data-event="parking_full">복귀할 주차장 만차</button>
+    <button id="resume">추천 다시 받기</button>
+    <span class="sep"></span>
+    <button id="restart">처음부터</button>
+  </div>
+  <details><summary>이용 기록 (개발자 확인용)</summary><pre id="audit"></pre></details>
+</section>
 
-<script src="/static/app.js"></script>
+<script src="/static/voice.js?v=3"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>
