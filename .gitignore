@@ -8,3 +8,8 @@ __pycache__/
 .venv/
 .env
 .claude/
+
+# Android 빌드 산출물 (APK 는 apk/ 폴더에만)
+android/build/
+*.jks
+*.idsig
